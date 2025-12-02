@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.22";
+const SCRIPT_VERSION = "1.1.23";
 const SCRIPT_NAME = "script"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/script.js";
@@ -1208,24 +1208,36 @@ async function showPreviewReport(validContacts, skippedContacts, messageTemplate
             ` : ''}
             
             <div class="buttons">
-                <button class="btn cancel" id="cancelBtn">Annuler</button>
-                <button class="btn go" id="goBtn">🚀 GO! Envoyer ${validContacts.length}</button>
+                <a href="app://cancel" class="btn cancel">Annuler</a>
+                <a href="app://go" class="btn go">🚀 GO! Envoyer ${validContacts.length}</a>
             </div>
+            <style>
+                .buttons a { text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center; }
+            </style>
         </body>
         </html>
     `);
     
-    // Use evaluateJavaScript with completion callback - this waits for user action
-    let result = await wv.evaluateJavaScript(`
-        document.getElementById('cancelBtn').addEventListener('click', function() {
-            completion('cancel');
-        });
-        document.getElementById('goBtn').addEventListener('click', function() {
-            completion('go');
-        });
-    `, true);
+    // Track user choice
+    let userChoice = 'cancel';
     
-    return result === 'go';
+    // Intercept link clicks to close WebView
+    wv.shouldAllowRequest = (request) => {
+        let url = request.url;
+        if (url === 'app://go') {
+            userChoice = 'go';
+            return false; // Block navigation, will close WebView
+        } else if (url === 'app://cancel') {
+            userChoice = 'cancel';
+            return false;
+        }
+        return true;
+    };
+    
+    // Present WebView - closes when link is tapped
+    await wv.present();
+    
+    return userChoice === 'go';
 }
 
 async function getMessageTemplate() {
