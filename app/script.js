@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.6";
+const SCRIPT_VERSION = "1.1.7";
 const SCRIPT_NAME = "SMS Mass Send"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
@@ -32,14 +32,22 @@ function isNewerVersion(latest, current) {
 async function checkForUpdates(silent = false) {
     try {
         let req = new Request(VERSION_URL);
-        req.timeoutInterval = 5;
+        req.timeoutInterval = 10;
         let versionInfo = await req.loadJSON();
         
         const currentVersion = SCRIPT_VERSION;
         const latestVersion = versionInfo.version;
+        const shouldUpdate = isNewerVersion(latestVersion, currentVersion);
+        
+        // DEBUG: Always show what's happening
+        let debugAlert = new Alert();
+        debugAlert.title = "🔍 Debug Update Check";
+        debugAlert.message = `Current: ${currentVersion}\nLatest: ${latestVersion}\nShould update: ${shouldUpdate}`;
+        debugAlert.addAction("OK");
+        await debugAlert.present();
         
         // Compare versions properly
-        if (isNewerVersion(latestVersion, currentVersion)) {
+        if (shouldUpdate) {
             // New version available!
             let alert = new Alert();
             alert.title = "🔄 Mise à jour disponible!";
@@ -62,10 +70,12 @@ async function checkForUpdates(silent = false) {
             await alert.present();
         }
     } catch (error) {
-        if (!silent) {
-            console.log("Update check failed: " + error);
-        }
-        // Silently fail - don't prevent script from running
+        // DEBUG: Show the error
+        let errAlert = new Alert();
+        errAlert.title = "❌ Update Error";
+        errAlert.message = String(error);
+        errAlert.addAction("OK");
+        await errAlert.present();
     }
     return false;
 }
