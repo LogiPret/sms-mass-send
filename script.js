@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.20";
+const SCRIPT_VERSION = "1.1.21";
 const SCRIPT_NAME = "script"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/script.js";
@@ -1208,24 +1208,22 @@ async function showPreviewReport(validContacts, skippedContacts, messageTemplate
             ` : ''}
             
             <div class="buttons">
-                <button class="btn cancel" onclick="window.cancel = true; completion(false);">Annuler</button>
-                <button class="btn go" onclick="completion(true);">🚀 GO! Envoyer ${validContacts.length}</button>
+                <button class="btn cancel" id="cancelBtn">Annuler</button>
+                <button class="btn go" id="goBtn">🚀 GO! Envoyer ${validContacts.length}</button>
             </div>
-            
-            <script>
-                function completion(value) {
-                    window.result = value;
-                }
-            </script>
         </body>
         </html>
     `);
     
-    await wv.present();
+    // Use evaluateJavaScript with completion callback - this waits for user action
+    let result = await wv.evaluateJavaScript(`
+        new Promise((resolve) => {
+            document.getElementById('cancelBtn').addEventListener('click', () => resolve('cancel'));
+            document.getElementById('goBtn').addEventListener('click', () => resolve('go'));
+        })
+    `, true);
     
-    // Récupérer le résultat
-    let result = await wv.evaluateJavaScript('window.result');
-    return result === true;
+    return result === 'go';
 }
 
 async function getMessageTemplate() {
