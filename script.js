@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.9";
+const SCRIPT_VERSION = "1.1.10";
 const SCRIPT_NAME = "SMS Mass Send"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
@@ -89,35 +89,82 @@ async function checkForUpdates(silent = false) {
 
 async function installUpdate() {
     try {
-        // Download the new script
-        let req = new Request(UPDATE_URL);
+        // Download the new script with cache busting
+        let cacheBuster = new Date().getTime();
+        let req = new Request(UPDATE_URL + "?cb=" + cacheBuster);
+        req.headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        };
         let newScript = await req.loadString();
         
-        // Get the file manager
-        let fm = FileManager.iCloud();
-        let scriptPath = fm.joinPath(fm.documentsDirectory(), SCRIPT_NAME + ".js");
-        
-        // If using local storage instead of iCloud
-        if (!fm.isFileStoredIniCloud(scriptPath)) {
-            fm = FileManager.local();
-            scriptPath = fm.joinPath(fm.documentsDirectory(), SCRIPT_NAME + ".js");
+        if (!newScript || newScript.length < 100) {
+            throw new Error("Downloaded script is empty or too short");
         }
         
-        // Write the new script
-        fm.writeString(scriptPath, newScript);
+        // Try to find and update the script file
+        let fm;
+        let scriptPath;
+        let success = false;
+        
+        // Try iCloud first
+        try {
+            fm = FileManager.iCloud();
+            scriptPath = fm.joinPath(fm.documentsDirectory(), SCRIPT_NAME + ".js");
+            if (fm.fileExists(scriptPath)) {
+                fm.writeString(scriptPath, newScript);
+                success = true;
+            }
+        } catch (e) {
+            // iCloud not available
+        }
+        
+        // Try local storage if iCloud didn't work
+        if (!success) {
+            try {
+                fm = FileManager.local();
+                scriptPath = fm.joinPath(fm.documentsDirectory(), SCRIPT_NAME + ".js");
+                if (fm.fileExists(scriptPath)) {
+                    fm.writeString(scriptPath, newScript);
+                    success = true;
+                }
+            } catch (e) {
+                // Local also failed
+            }
+        }
+        
+        // If still no success, try to find by listing files
+        if (!success) {
+            fm = FileManager.local();
+            let docs = fm.documentsDirectory();
+            let files = fm.listContents(docs);
+            let scriptFiles = files.filter(f => f.endsWith('.js'));
+            
+            let alert = new Alert();
+            alert.title = "📁 Debug: Script Files";
+            alert.message = `Looking for: "${SCRIPT_NAME}.js"\n\nFound:\n${scriptFiles.join('\n')}\n\nPath tried: ${scriptPath}`;
+            alert.addAction("OK");
+            await alert.present();
+            return;
+        }
         
         let alert = new Alert();
         alert.title = "✅ Mise à jour installée!";
-        alert.message = "Le script a été mis à jour. Veuillez le relancer.";
+        alert.message = `Script mis à jour!\nPath: ${scriptPath}\nTaille: ${newScript.length} chars\n\nVeuillez relancer le script.`;
         alert.addAction("OK");
         await alert.present();
         
-        // Exit the script so user relaunches with new version
         return;
         
     } catch (error) {
         let alert = new Alert();
         alert.title = "❌ Erreur";
+        alert.message = "Impossible de télécharger la mise à jour: " + String(error);
+        alert.addAction("OK");
+        await alert.present();
+    }
+}
         alert.message = "Impossible de télécharger la mise à jour: " + error;
         alert.addAction("OK");
         await alert.present();
