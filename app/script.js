@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.10";
+const SCRIPT_VERSION = "1.1.11";
 const SCRIPT_NAME = "SMS Mass Send"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
@@ -161,11 +161,6 @@ async function installUpdate() {
         let alert = new Alert();
         alert.title = "❌ Erreur";
         alert.message = "Impossible de télécharger la mise à jour: " + String(error);
-        alert.addAction("OK");
-        await alert.present();
-    }
-}
-        alert.message = "Impossible de télécharger la mise à jour: " + error;
         alert.addAction("OK");
         await alert.present();
     }
