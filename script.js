@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.11";
+const SCRIPT_VERSION = "1.1.12";
 const SCRIPT_NAME = "SMS Mass Send"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
@@ -1273,7 +1273,7 @@ async function getMessageTemplate() {
     <body>
         <h2>Ton message</h2>
         <div class="help">
-            👆 <b>Clique sur une variable</b> pour l'insérer dans ton message.<br>
+            👇 <b>Clique sur une variable</b> pour l'insérer dans ton message.<br>
             Elle sera remplacée par le vrai nom de chaque contact.
         </div>
         <div class="variables">
