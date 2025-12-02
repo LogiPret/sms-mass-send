@@ -5,8 +5,8 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.12";
-const SCRIPT_NAME = "SMS Mass Send"; // Must match filename in Scriptable
+const SCRIPT_VERSION = "1.1.13";
+const SCRIPT_NAME = "script"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
 
