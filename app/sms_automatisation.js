@@ -83,7 +83,6 @@ async function checkForUpdates(silent = true) {
 
 async function installUpdate() {
     try {
-        // Download the new script with cache busting
         let cacheBuster = new Date().getTime();
         let req = new Request(UPDATE_URL + "?cb=" + cacheBuster);
         req.headers = {
