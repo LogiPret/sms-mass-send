@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.21";
+const SCRIPT_VERSION = "1.1.22";
 const SCRIPT_NAME = "script"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/script.js";
@@ -1217,10 +1217,12 @@ async function showPreviewReport(validContacts, skippedContacts, messageTemplate
     
     // Use evaluateJavaScript with completion callback - this waits for user action
     let result = await wv.evaluateJavaScript(`
-        new Promise((resolve) => {
-            document.getElementById('cancelBtn').addEventListener('click', () => resolve('cancel'));
-            document.getElementById('goBtn').addEventListener('click', () => resolve('go'));
-        })
+        document.getElementById('cancelBtn').addEventListener('click', function() {
+            completion('cancel');
+        });
+        document.getElementById('goBtn').addEventListener('click', function() {
+            completion('go');
+        });
     `, true);
     
     return result === 'go';
