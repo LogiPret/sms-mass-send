@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.4";
+const SCRIPT_VERSION = "1.1.5";
 const SCRIPT_NAME = "SMS Mass Send"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
@@ -13,6 +13,23 @@ const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/ma
 // ============================================
 // AUTO-UPDATE FUNCTION
 // ============================================
+
+// Compare semantic versions (handles 1.1 vs 1.1.4 correctly)
+function isNewerVersion(latest, current) {
+    const latestParts = latest.split('.').map(n => parseInt(n) || 0);
+    const currentParts = current.split('.').map(n => parseInt(n) || 0);
+    
+    // Pad to same length
+    while (latestParts.length < 3) latestParts.push(0);
+    while (currentParts.length < 3) currentParts.push(0);
+    
+    for (let i = 0; i < 3; i++) {
+        if (latestParts[i] > currentParts[i]) return true;
+        if (latestParts[i] < currentParts[i]) return false;
+    }
+    return false; // Equal
+}
+
 async function checkForUpdates(silent = false) {
     try {
         let req = new Request(VERSION_URL);
@@ -22,8 +39,8 @@ async function checkForUpdates(silent = false) {
         const currentVersion = SCRIPT_VERSION;
         const latestVersion = versionInfo.version;
         
-        // Compare versions (simple string comparison works for x.y.z format)
-        if (latestVersion > currentVersion) {
+        // Compare versions properly
+        if (isNewerVersion(latestVersion, currentVersion)) {
             // New version available!
             let alert = new Alert();
             alert.title = "🔄 Mise à jour disponible!";
