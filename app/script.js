@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.13";
+const SCRIPT_VERSION = "1.1.14";
 const SCRIPT_NAME = "script"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
@@ -49,7 +49,7 @@ async function checkForUpdates(silent = false) {
         // DEBUG: Always show what's happening
         let debugAlert = new Alert();
         debugAlert.title = "🔍 Debug Update Check";
-        debugAlert.message = `Current: ${currentVersion}\nLatest: ${latestVersion}\nShould update: ${shouldUpdate}\nURL: ...?cb=${cacheBuster}`;
+        debugAlert.message = `Current: ${currentVersion}\nLatest: ${latestVersion}`;
         debugAlert.addAction("OK");
         await debugAlert.present();
         
