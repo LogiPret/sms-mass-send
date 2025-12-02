@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1";
+const SCRIPT_VERSION = "1.1.2";
 const SCRIPT_NAME = "SMS Mass Send"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
@@ -15,7 +15,6 @@ const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/ma
 // ============================================
 async function checkForUpdates(silent = false) {
     try {
-        // Fetch version info from GitHub
         let req = new Request(VERSION_URL);
         req.timeoutInterval = 5;
         let versionInfo = await req.loadJSON();
