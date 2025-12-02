@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.16";
+const SCRIPT_VERSION = "1.1.17";
 const SCRIPT_NAME = "script"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/script.js";
@@ -31,7 +31,6 @@ function isNewerVersion(latest, current) {
 
 async function checkForUpdates(silent = false) {
     try {
-        // Add cache-busting parameter AND no-cache headers
         let cacheBuster = new Date().getTime();
         let req = new Request(VERSION_URL + "?cb=" + cacheBuster);
         req.timeoutInterval = 10;
