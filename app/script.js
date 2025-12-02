@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.19";
+const SCRIPT_VERSION = "1.1.20";
 const SCRIPT_NAME = "script"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/script.js";
@@ -158,7 +158,7 @@ async function installUpdate() {
 // ============================================
 // CONFIGURATION
 // ============================================
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 const CONFIG = {
     // Colonne téléphone générique (format multi ou simple)
