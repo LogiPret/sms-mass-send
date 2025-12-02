@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.24";
+const SCRIPT_VERSION = "1.1.25";
 const SCRIPT_NAME = "sms_automatisation"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -59,7 +59,7 @@ async function checkForUpdates(silent = true) {
             if (choice === 0) {
                 // Download and install update
                 await installUpdate();
-                return true; // Script was updated, should restart
+                return true;
             }
         } else if (!silent) {
             let alert = new Alert();
@@ -83,7 +83,6 @@ async function checkForUpdates(silent = true) {
 
 async function installUpdate() {
     try {
-        // Download the new script with cache busting
         let cacheBuster = new Date().getTime();
         let req = new Request(UPDATE_URL + "?cb=" + cacheBuster);
         req.headers = {
@@ -1391,3 +1390,4 @@ function escapeRegExp(string) {
 }
 
 await main();
+// Test 1764717075

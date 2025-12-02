@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.24";
+const SCRIPT_VERSION = "1.1.25";
 const SCRIPT_NAME = "sms_automatisation"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -1390,3 +1390,4 @@ function escapeRegExp(string) {
 }
 
 await main();
+// Test 1764717075
