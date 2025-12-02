@@ -59,7 +59,7 @@ async function checkForUpdates(silent = true) {
             if (choice === 0) {
                 // Download and install update
                 await installUpdate();
-                return true; // Script was updated, should restart
+                return true;
             }
         } else if (!silent) {
             let alert = new Alert();
