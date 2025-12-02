@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.8";
+const SCRIPT_VERSION = "1.1.9";
 const SCRIPT_NAME = "SMS Mass Send"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
@@ -31,10 +31,15 @@ function isNewerVersion(latest, current) {
 
 async function checkForUpdates(silent = false) {
     try {
-        // Add cache-busting parameter to bypass GitHub CDN cache
+        // Add cache-busting parameter AND no-cache headers
         let cacheBuster = new Date().getTime();
         let req = new Request(VERSION_URL + "?cb=" + cacheBuster);
         req.timeoutInterval = 10;
+        req.headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        };
         let versionInfo = await req.loadJSON();
         
         const currentVersion = SCRIPT_VERSION;
@@ -44,7 +49,7 @@ async function checkForUpdates(silent = false) {
         // DEBUG: Always show what's happening
         let debugAlert = new Alert();
         debugAlert.title = "🔍 Debug Update Check";
-        debugAlert.message = `Current: ${currentVersion}\nLatest: ${latestVersion}\nShould update: ${shouldUpdate}`;
+        debugAlert.message = `Current: ${currentVersion}\nLatest: ${latestVersion}\nShould update: ${shouldUpdate}\nURL: ...?cb=${cacheBuster}`;
         debugAlert.addAction("OK");
         await debugAlert.present();
         
