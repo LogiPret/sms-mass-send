@@ -1,0 +1,9 @@
+Prenom,Nom,Phone,Notes
+José,García-López,+14389266456,Nom avec accents et tiret
+"Anne-Marie, Claire",Bélanger-Roy,+15798819696,Prénom avec virgule (entre guillemets)
+,Dupont,4389266456,DEVRAIT ÊTRE IGNORÉ - prénom manquant
+Michel,,5798819696,Nom vide mais prénom OK
+李明,Wang,+14389266456,Caractères chinois
+محمد,Al-Hassan,+15798819696,Caractères arabes
+Björk,Müller,438-926-6456,Caractères européens
+Jean-Pierre,O'Brien,579.881.9696,Apostrophe dans le nom

@@ -1,0 +1,44 @@
+#!/bin/bash
+# Pre-push hook to auto-increment build number
+
+# Path to build file
+BUILD_FILE=".build_number"
+SCRIPT_SOURCE="app/script.js"
+VERSION_JSON="version.json"
+
+# Read current build number or start at 0
+if [ -f "$BUILD_FILE" ]; then
+    BUILD=$(cat "$BUILD_FILE")
+else
+    BUILD=0
+fi
+
+# Increment build number
+BUILD=$((BUILD + 1))
+echo $BUILD > "$BUILD_FILE"
+
+# Get base version from script (e.g., "1.0")
+BASE_VERSION=$(grep 'const SCRIPT_VERSION' "$SCRIPT_SOURCE" | sed 's/.*"\([0-9]*\.[0-9]*\).*/\1/')
+
+# Update script with new full version
+FULL_VERSION="${BASE_VERSION}.${BUILD}"
+sed -i '' "s/const SCRIPT_VERSION = \"[^\"]*\"/const SCRIPT_VERSION = \"$FULL_VERSION\"/" "$SCRIPT_SOURCE"
+
+# Update version.json
+CHANGELOG=$(cat "$VERSION_JSON" | grep '"changelog"' | sed 's/.*: *"\(.*\)".*/\1/')
+cat > "$VERSION_JSON" << EOF
+{
+    "version": "$FULL_VERSION",
+    "changelog": "$CHANGELOG",
+    "date": "$(date +%Y-%m-%d)",
+    "build": $BUILD
+}
+EOF
+
+# Copy updated script to root
+cp "$SCRIPT_SOURCE" "script.js"
+
+# Add the changed files to the commit
+git add "$BUILD_FILE" "$SCRIPT_SOURCE" "$VERSION_JSON" "script.js"
+
+echo "Build number incremented to $BUILD (version $FULL_VERSION)"

@@ -1,0 +1,45 @@
+First Name,Last Name,Phone,Email,Company,Notes
+Jean-Pierre,Tremblay,+14389266456,jp.tremblay@gmail.com,Desjardins,"Client VIP, appeler avant midi"
+Marie,Dubois,(438) 926-6456,marie.dubois@outlook.com,TD Bank,Préfère les textos
+"Robert ""Bob""",Johnson,438-926-6456,bob.j@yahoo.ca,RBC,
+François,O'Brien,1-438-926-6456,fobrien@hotmail.com,BMO,Parle anglais et français
+Émilie,St-Laurent,14389266456,emilie@icloud.com,,Nouveau client
+José,García-López,+1 438 926 6456,jose.garcia@gmail.com,Scotiabank,Cliente hispanophone
+,Martínez,+14389266456,unknown@test.com,CIBC,Prénom manquant - à vérifier
+Michel,,438.926.6456,michel@gmail.com,National Bank,Nom manquant
+"Anne-Marie, Claire",Bélanger-Roy,+14389266456,am.belanger@gmail.com,Laurentian,Double prénom avec virgule
+Björk,Müller,+15798819696,bjork@test.de,Foreign Bank,Client européen - SMS test
+李明,Wang,+15798819696,ming.wang@qq.com,HSBC,Client chinois
+محمد,Al-Hassan,+1 579 881 9696,mohammad@gmail.com,Islamic Bank,Arabic name
+D'Arcy,MacLeod-O'Neill,(579) 881-9696,darcy@test.ca,Credit Union,Apostrophes multiples
+"  Pierre  ",  Lavoie  ,  +14389266456  ,pierre@test.ca,Caisse Pop,Espaces avant/après
+Jean\nPaul,Gaultier,579-881-9696,jpg@fashion.com,Luxury Inc,Caractère spécial dans nom
+Test<script>,Injection</script>,+14389266456,hacker@evil.com,Malicious Corp,Test injection
+null,undefined,+15798819696,null@test.com,Tech Co,Noms programmation
+N/A,#REF!,+14389266456,excel.error@test.com,Excel Export,Erreurs Excel typiques
+Éloïse,Côté-Désîlets,+14389266456,eloise@bell.ca,Vidéotron,Accents français complets
+"Smith, John",Jr.,+15798819696,john.jr@test.com,US Company,Format inversé nom prénom
+🎉,Emoji-Test,+14389266456,emoji@test.com,Fun Corp,Emoji dans prénom
+,,,orphan@test.com,Empty Inc,Ligne presque vide
+Stéphane,Parent (CEO),+14389266456,ceo@bigcorp.ca,MegaCorp,Parenthèses dans nom
+Luc,Gagnon [VIP],+15798819696,vip@test.ca,Premium Co,Crochets dans nom
+Test;Drop,Tables--,+14389266456,sql@injection.com,DB Corp,SQL injection test
+Marie-Ève,De La Fontaine,+14389266456,mef@aristocrat.ca,Old Money Inc,Particule nobiliaire
+"Prénom avec ""guillemets""","Nom avec ""quotes""",+15798819696,quotes@test.com,Quote Co,Guillemets dans champs
+	Tabulation,	Aussi	,+14389266456,tab@test.com,Tab Corp,Tabulations au lieu d'espaces
+MAJUSCULES,PARTOUT,+15798819696,caps@test.com,LOUD CORP,Tout en majuscules
+lowercase,everywhere,+14389266456,lower@test.com,quiet corp,Tout en minuscules
+MiXeD,CaSe,+15798819696,mixed@test.com,Random Corp,Casse mixte
+Isabelle,Champagne 🍾,+14389266456,izzy@party.ca,Celebration Inc,Emoji dans nom
+"Line1
+Line2",Multiline,+15798819696,multi@test.com,Break Corp,Retour à la ligne dans champ
+Sophie,999-Erreur,+14389266456,error@test.com,Bug Corp,Chiffres dans nom
+Agent,007,+15798819696,bond@mi6.uk,Secret Service,Nom numérique
+Anne Marie,De Gaulle,4389266456,anne@france.fr,French Embassy,Numéro sans +1
+Réjean,Beauséjour,438 926 6456,rejean@qc.ca,Hydro-Québec,Format canadien
+X Æ A-12,Musk,+14389266456,x@spacex.com,Tesla,Nom bizarre célèbre
+	,	,+15798819696,whitespace@test.com,Space Corp,Juste des espaces/tabs
+Café,Latté,+14389266456,coffee@test.com,Starbucks,Accents dans prénom et nom
+"Virgule, dans prénom","Et, dans nom",+15798819696,comma@test.com,Comma Corp,Virgules partout
+Здравствуй,Привет,+14389266456,russian@test.ru,Sberbank,Caractères cyrilliques
+日本語,テスト,+15798819696,japanese@test.jp,Sony,Caractères japonais

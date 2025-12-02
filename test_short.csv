@@ -1,0 +1,8 @@
+First Name,Last Name,Phone,Email,Company,Notes
+José,García-López,+1 438 926 6456,jose.garcia@gmail.com,Scotiabank,Cliente hispanophone
+,Martínez,+14389266456,unknown@test.com,CIBC,Prénom manquant - à vérifier
+Michel,,438.926.6456,michel@gmail.com,National Bank,Nom manquant
+"Anne-Marie, Claire",Bélanger-Roy,+14389266456,am.belanger@gmail.com,Laurentian,Double prénom avec virgule
+Björk,Müller,+15798819696,bjork@test.de,Foreign Bank,Client européen - SMS test
+李明,Wang,+15798819696,ming.wang@qq.com,HSBC,Client chinois
+محمد,Al-Hassan,+1 579 881 9696,mohammad@gmail.com,Islamic Bank,Arabic name
