@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.18";
+const SCRIPT_VERSION = "1.1.19";
 const SCRIPT_NAME = "script"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/script.js";
@@ -29,7 +29,7 @@ function isNewerVersion(latest, current) {
     return false;
 }
 
-async function checkForUpdates(silent = false) {
+async function checkForUpdates(silent = true) {
     try {
         let cacheBuster = new Date().getTime();
         let req = new Request(VERSION_URL + "?cb=" + cacheBuster);
@@ -44,12 +44,6 @@ async function checkForUpdates(silent = false) {
         const currentVersion = SCRIPT_VERSION;
         const latestVersion = versionInfo.version;
         const shouldUpdate = isNewerVersion(latestVersion, currentVersion);
-        
-        let debugAlert = new Alert();
-        debugAlert.title = "Debug Update Check";
-        debugAlert.message = `Current: ${currentVersion}\nLatest: ${latestVersion}`;
-        debugAlert.addAction("OK");
-        await debugAlert.present();
         
         // Compare versions properly
         if (shouldUpdate) {
@@ -75,12 +69,14 @@ async function checkForUpdates(silent = false) {
             await alert.present();
         }
     } catch (error) {
-        // DEBUG: Show the error
-        let errAlert = new Alert();
-        errAlert.title = "❌ Update Error";
-        errAlert.message = String(error);
-        errAlert.addAction("OK");
-        await errAlert.present();
+        // Show user-friendly error (not technical details)
+        if (!silent) {
+            let errAlert = new Alert();
+            errAlert.title = "❌ Erreur de mise à jour";
+            errAlert.message = "Impossible de vérifier les mises à jour. Vérifiez votre connexion internet.";
+            errAlert.addAction("OK");
+            await errAlert.present();
+        }
     }
     return false;
 }
@@ -132,16 +128,11 @@ async function installUpdate() {
             }
         }
         
-        // If still no success, try to find by listing files
+        // If still no success, show error
         if (!success) {
-            fm = FileManager.local();
-            let docs = fm.documentsDirectory();
-            let files = fm.listContents(docs);
-            let scriptFiles = files.filter(f => f.endsWith('.js'));
-            
             let alert = new Alert();
-            alert.title = "📁 Debug: Script Files";
-            alert.message = `Looking for: "${SCRIPT_NAME}.js"\n\nFound:\n${scriptFiles.join('\n')}\n\nPath tried: ${scriptPath}`;
+            alert.title = "❌ Erreur";
+            alert.message = "Impossible de trouver le fichier script. Réinstallez le script manuellement.";
             alert.addAction("OK");
             await alert.present();
             return;
@@ -149,7 +140,7 @@ async function installUpdate() {
         
         let alert = new Alert();
         alert.title = "✅ Mise à jour installée!";
-        alert.message = `Script mis à jour!\nPath: ${scriptPath}\nTaille: ${newScript.length} chars\n\nVeuillez relancer le script.`;
+        alert.message = "Le script a été mis à jour.\n\nVeuillez relancer le script.";
         alert.addAction("OK");
         await alert.present();
         
