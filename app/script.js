@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.23";
+const SCRIPT_VERSION = "1.1.24";
 const SCRIPT_NAME = "script"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/script.js";
@@ -1208,36 +1208,27 @@ async function showPreviewReport(validContacts, skippedContacts, messageTemplate
             ` : ''}
             
             <div class="buttons">
-                <a href="app://cancel" class="btn cancel">Annuler</a>
-                <a href="app://go" class="btn go">🚀 GO! Envoyer ${validContacts.length}</a>
+                <div class="btn info">⬇️ Swipe pour fermer et confirmer</div>
             </div>
             <style>
-                .buttons a { text-decoration: none; text-align: center; display: flex; align-items: center; justify-content: center; }
+                .buttons .info { background: #2c2c2e; color: #888; text-align: center; }
             </style>
         </body>
         </html>
     `);
     
-    // Track user choice
-    let userChoice = 'cancel';
-    
-    // Intercept link clicks to close WebView
-    wv.shouldAllowRequest = (request) => {
-        let url = request.url;
-        if (url === 'app://go') {
-            userChoice = 'go';
-            return false; // Block navigation, will close WebView
-        } else if (url === 'app://cancel') {
-            userChoice = 'cancel';
-            return false;
-        }
-        return true;
-    };
-    
-    // Present WebView - closes when link is tapped
+    // Show preview
     await wv.present();
     
-    return userChoice === 'go';
+    // After viewing, ask for confirmation with native Alert
+    let alert = new Alert();
+    alert.title = "🚀 Envoyer la campagne?";
+    alert.message = `${validContacts.length} messages seront envoyés.`;
+    alert.addAction("Envoyer");
+    alert.addCancelAction("Annuler");
+    
+    let choice = await alert.present();
+    return choice === 0; // 0 = Envoyer, -1 = Annuler
 }
 
 async function getMessageTemplate() {
