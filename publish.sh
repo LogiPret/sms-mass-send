@@ -1,10 +1,9 @@
 #!/bin/bash
-# Publish script to GitHub for auto-update
-# Build number auto-increments on every push!
+# Publish script - Updates public Gist and pushes to private repo
+# Gist is public (for auto-updates), repo is private (for development)
 
 # Configuration
-REPO_NAME="sms-mass-send"
-GITHUB_USER="hugootth"
+GIST_ID="0e0f68902ace0bfe94e0e83a8f89db2e"
 SCRIPT_SOURCE="app/script.js"
 VERSION_FILE="version.json"
 BUILD_FILE=".build_number"
@@ -13,7 +12,7 @@ BUILD_FILE=".build_number"
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
 echo -e "${GREEN}=== SMS Mass Send - Publisher ===${NC}"
 
@@ -74,20 +73,7 @@ cat > "$VERSION_FILE" << EOF
 EOF
 echo -e "${GREEN}Updated version.json${NC}"
 
-# Check if GitHub repo exists
-if ! gh repo view "$GITHUB_USER/$REPO_NAME" &>/dev/null; then
-    echo -e "${YELLOW}Creating GitHub repository...${NC}"
-    gh repo create "$REPO_NAME" --public --description "SMS Mass Send - Scriptable script for mass SMS from CSV"
-    
-    # Initialize git if needed
-    if [ ! -d ".git" ]; then
-        git init
-    fi
-    
-    git remote add origin "https://github.com/$GITHUB_USER/$REPO_NAME.git" 2>/dev/null || true
-fi
-
-# Copy script to root for easy raw URL access
+# Copy script to root for easy access
 cp "$SCRIPT_SOURCE" "script.js"
 
 # Create a nice README
@@ -98,15 +84,9 @@ Script Scriptable pour envoyer des SMS en masse depuis un fichier CSV.
 
 ## Installation
 
-### Option 1: Installation directe
-1. Télécharge [script.js](./script.js)
+1. Télécharge le script depuis le [Gist public](https://gist.github.com/HugoOtth/0e0f68902ace0bfe94e0e83a8f89db2e)
 2. Ouvre-le avec Scriptable sur iPhone
 3. C'est prêt!
-
-### Option 2: Copier-coller
-1. Copie le contenu de [script.js](./script.js)
-2. Crée un nouveau script dans Scriptable
-3. Colle le code
 
 ## Mise à jour automatique
 
@@ -119,26 +99,25 @@ Le script vérifie automatiquement les mises à jour à chaque lancement.
 - 🔤 Variables personnalisées (**PRENOM**, **NOM**)
 - 👁️ Prévisualisation avant envoi
 - 🇫🇷 Support des accents français
-
-## Format CSV supporté
-
-Le script détecte automatiquement les colonnes:
-- **Téléphone**: phone, telephone, mobile, cell, work, home...
-- **Prénom**: prenom, firstname, first name...
-- **Nom**: nom, lastname, last name...
 EOF
 
-# Git operations
+# Git operations - push to private repo
+echo -e "${YELLOW}Pushing to private repo...${NC}"
 git add script.js version.json README.md "$BUILD_FILE" "$SCRIPT_SOURCE"
 git commit -m "v$FULL_VERSION: $CHANGELOG"
 git branch -M main
 git push -u origin main
 
+# Sync to public Gist for auto-updates
+echo -e "${YELLOW}Syncing to public Gist...${NC}"
+gh gist edit "$GIST_ID" -f script.js -f version.json
+
 echo ""
 echo -e "${GREEN}=== Published v$FULL_VERSION! ===${NC}"
 echo ""
-echo "Repository: https://github.com/$GITHUB_USER/$REPO_NAME"
+echo "Private repo: https://github.com/LogiPret/sms-mass-send"
+echo "Public Gist:  https://gist.github.com/HugoOtth/$GIST_ID"
 echo ""
-echo "Raw URLs:"
-echo "  Script:  https://raw.githubusercontent.com/$GITHUB_USER/$REPO_NAME/main/script.js"
-echo "  Version: https://raw.githubusercontent.com/$GITHUB_USER/$REPO_NAME/main/version.json"
+echo "Update URLs (public):"
+echo "  Script:  https://gist.githubusercontent.com/HugoOtth/$GIST_ID/raw/script.js"
+echo "  Version: https://gist.githubusercontent.com/HugoOtth/$GIST_ID/raw/version.json"

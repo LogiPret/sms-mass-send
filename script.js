@@ -5,16 +5,16 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.15";
+const SCRIPT_VERSION = "1.1.16";
 const SCRIPT_NAME = "script"; // Must match filename in Scriptable
-const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
-const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
+const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
+const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/script.js";
+const VERSION_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/version.json";
 
 // ============================================
 // AUTO-UPDATE FUNCTION
 // ============================================
 
-// Compare semantic versions (handles 1.1 vs 1.1.4 correctly)
 function isNewerVersion(latest, current) {
     const latestParts = latest.split('.').map(n => parseInt(n) || 0);
     const currentParts = current.split('.').map(n => parseInt(n) || 0);
@@ -26,7 +26,7 @@ function isNewerVersion(latest, current) {
         if (latestParts[i] > currentParts[i]) return true;
         if (latestParts[i] < currentParts[i]) return false;
     }
-    return false; // Equal
+    return false;
 }
 
 async function checkForUpdates(silent = false) {
