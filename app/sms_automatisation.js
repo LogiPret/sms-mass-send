@@ -1,4 +1,4 @@
-// SMS Mass Send - Scriptable Script
+// SMS Automatisation - Scriptable Script
 // Version 1.0
 // Pour iPhone - Envoi de SMS en masse depuis un CSV
 
@@ -6,9 +6,9 @@
 // AUTO-UPDATE CONFIGURATION
 // ============================================
 const SCRIPT_VERSION = "1.1.24";
-const SCRIPT_NAME = "script"; // Must match filename in Scriptable
+const SCRIPT_NAME = "sms_automatisation"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
-const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/script.js";
+const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
 const VERSION_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/version.json";
 
 // ============================================

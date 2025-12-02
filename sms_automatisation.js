@@ -1,11 +1,164 @@
-// SMS Mass Send - Scriptable Script
+// SMS Automatisation - Scriptable Script
 // Version 1.0
 // Pour iPhone - Envoi de SMS en masse depuis un CSV
 
 // ============================================
+// AUTO-UPDATE CONFIGURATION
+// ============================================
+const SCRIPT_VERSION = "1.1.24";
+const SCRIPT_NAME = "sms_automatisation"; // Must match filename in Scriptable
+const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
+const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
+const VERSION_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/version.json";
+
+// ============================================
+// AUTO-UPDATE FUNCTION
+// ============================================
+
+function isNewerVersion(latest, current) {
+    const latestParts = latest.split('.').map(n => parseInt(n) || 0);
+    const currentParts = current.split('.').map(n => parseInt(n) || 0);
+    
+    while (latestParts.length < 3) latestParts.push(0);
+    while (currentParts.length < 3) currentParts.push(0);
+    
+    for (let i = 0; i < 3; i++) {
+        if (latestParts[i] > currentParts[i]) return true;
+        if (latestParts[i] < currentParts[i]) return false;
+    }
+    return false;
+}
+
+async function checkForUpdates(silent = true) {
+    try {
+        let cacheBuster = new Date().getTime();
+        let req = new Request(VERSION_URL + "?cb=" + cacheBuster);
+        req.timeoutInterval = 10;
+        req.headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        };
+        let versionInfo = await req.loadJSON();
+        
+        const currentVersion = SCRIPT_VERSION;
+        const latestVersion = versionInfo.version;
+        const shouldUpdate = isNewerVersion(latestVersion, currentVersion);
+        
+        // Compare versions properly
+        if (shouldUpdate) {
+            // New version available!
+            let alert = new Alert();
+            alert.title = "🔄 Mise à jour disponible!";
+            alert.message = `Version ${latestVersion} disponible (vous avez ${currentVersion})\n\n${versionInfo.changelog || ""}`;
+            alert.addAction("Mettre à jour");
+            alert.addCancelAction("Plus tard");
+            
+            let choice = await alert.present();
+            
+            if (choice === 0) {
+                // Download and install update
+                await installUpdate();
+                return true; // Script was updated, should restart
+            }
+        } else if (!silent) {
+            let alert = new Alert();
+            alert.title = "✅ À jour!";
+            alert.message = `Vous avez la dernière version (${currentVersion})`;
+            alert.addAction("OK");
+            await alert.present();
+        }
+    } catch (error) {
+        // Show user-friendly error (not technical details)
+        if (!silent) {
+            let errAlert = new Alert();
+            errAlert.title = "❌ Erreur de mise à jour";
+            errAlert.message = "Impossible de vérifier les mises à jour. Vérifiez votre connexion internet.";
+            errAlert.addAction("OK");
+            await errAlert.present();
+        }
+    }
+    return false;
+}
+
+async function installUpdate() {
+    try {
+        // Download the new script with cache busting
+        let cacheBuster = new Date().getTime();
+        let req = new Request(UPDATE_URL + "?cb=" + cacheBuster);
+        req.headers = {
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        };
+        let newScript = await req.loadString();
+        
+        if (!newScript || newScript.length < 100) {
+            throw new Error("Downloaded script is empty or too short");
+        }
+        
+        // Try to find and update the script file
+        let fm;
+        let scriptPath;
+        let success = false;
+        
+        // Try iCloud first
+        try {
+            fm = FileManager.iCloud();
+            scriptPath = fm.joinPath(fm.documentsDirectory(), SCRIPT_NAME + ".js");
+            if (fm.fileExists(scriptPath)) {
+                fm.writeString(scriptPath, newScript);
+                success = true;
+            }
+        } catch (e) {
+            // iCloud not available
+        }
+        
+        // Try local storage if iCloud didn't work
+        if (!success) {
+            try {
+                fm = FileManager.local();
+                scriptPath = fm.joinPath(fm.documentsDirectory(), SCRIPT_NAME + ".js");
+                if (fm.fileExists(scriptPath)) {
+                    fm.writeString(scriptPath, newScript);
+                    success = true;
+                }
+            } catch (e) {
+                // Local also failed
+            }
+        }
+        
+        // If still no success, show error
+        if (!success) {
+            let alert = new Alert();
+            alert.title = "❌ Erreur";
+            alert.message = "Impossible de trouver le fichier script. Réinstallez le script manuellement.";
+            alert.addAction("OK");
+            await alert.present();
+            return;
+        }
+        
+        let alert = new Alert();
+        alert.title = "✅ Mise à jour installée!";
+        alert.message = "Le script a été mis à jour.\n\nVeuillez relancer le script.";
+        alert.addAction("OK");
+        await alert.present();
+        
+        return;
+        
+    } catch (error) {
+        let alert = new Alert();
+        alert.title = "❌ Erreur";
+        alert.message = "Impossible de télécharger la mise à jour: " + String(error);
+        alert.addAction("OK");
+        await alert.present();
+    }
+}
+
+// ============================================
 // CONFIGURATION
 // ============================================
-const DEBUG_MODE = true;
+const DEBUG_MODE = false;
 
 const CONFIG = {
     // Colonne téléphone générique (format multi ou simple)
@@ -278,6 +431,10 @@ function fixFrenchAccents(text) {
 // ============================================
 async function main() {
     try {
+        // Check for updates silently at launch
+        let updated = await checkForUpdates(true);
+        if (updated) return; // Script was updated, exit
+        
         // Étape 1: Sélection du fichier CSV (pas de welcome screen)
         let csvContent = await selectCSVFile();
         if (!csvContent) return;
@@ -1051,24 +1208,27 @@ async function showPreviewReport(validContacts, skippedContacts, messageTemplate
             ` : ''}
             
             <div class="buttons">
-                <button class="btn cancel" onclick="window.cancel = true; completion(false);">Annuler</button>
-                <button class="btn go" onclick="completion(true);">🚀 GO! Envoyer ${validContacts.length}</button>
+                <div class="btn info">⬇️ Swipe pour fermer et confirmer</div>
             </div>
-            
-            <script>
-                function completion(value) {
-                    window.result = value;
-                }
-            </script>
+            <style>
+                .buttons .info { background: #2c2c2e; color: #888; text-align: center; }
+            </style>
         </body>
         </html>
     `);
     
+    // Show preview
     await wv.present();
     
-    // Récupérer le résultat
-    let result = await wv.evaluateJavaScript('window.result');
-    return result === true;
+    // After viewing, ask for confirmation with native Alert
+    let alert = new Alert();
+    alert.title = "🚀 Envoyer la campagne?";
+    alert.message = `${validContacts.length} messages seront envoyés.`;
+    alert.addAction("Envoyer");
+    alert.addCancelAction("Annuler");
+    
+    let choice = await alert.present();
+    return choice === 0; // 0 = Envoyer, -1 = Annuler
 }
 
 async function getMessageTemplate() {
@@ -1105,12 +1265,12 @@ async function getMessageTemplate() {
     <body>
         <h2>Ton message</h2>
         <div class="help">
-            👆 <b>Clique sur une variable</b> pour l'insérer dans ton message.<br>
+            👇 <b>Clique sur une variable</b> pour l'insérer dans ton message.<br>
             Elle sera remplacée par le vrai nom de chaque contact.
         </div>
         <div class="variables">
-            <span class="var" onclick="insert('**PRENOM** ')">**PRENOM**</span>
-            <span class="var" onclick="insert('**NOM** ')">**NOM**</span>
+            <span class="var" onclick="insert('**PRENOM** ')">Prénom</span>
+            <span class="var" onclick="insert('**NOM** ')">NOM</span>
         </div>
         <textarea id="msg" placeholder="Écris ton message ici...">Bonjour </textarea>
         <div class="footer">↓ Swipe vers le bas pour fermer quand tu as fini</div>

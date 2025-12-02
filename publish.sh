@@ -4,7 +4,7 @@
 
 # Configuration
 GIST_ID="0e0f68902ace0bfe94e0e83a8f89db2e"
-SCRIPT_SOURCE="app/script.js"
+SCRIPT_SOURCE="app/sms_automatisation.js"
 VERSION_FILE="version.json"
 BUILD_FILE=".build_number"
 
@@ -74,7 +74,7 @@ EOF
 echo -e "${GREEN}Updated version.json${NC}"
 
 # Copy script to root for easy access
-cp "$SCRIPT_SOURCE" "script.js"
+cp "$SCRIPT_SOURCE" "sms_automatisation.js"
 
 # Create a nice README
 cat > "README.md" << 'EOF'
@@ -103,14 +103,14 @@ EOF
 
 # Git operations - push to private repo
 echo -e "${YELLOW}Pushing to private repo...${NC}"
-git add script.js version.json README.md "$BUILD_FILE" "$SCRIPT_SOURCE"
+git add sms_automatisation.js version.json README.md "$BUILD_FILE" "$SCRIPT_SOURCE"
 git commit -m "v$FULL_VERSION: $CHANGELOG"
 git branch -M main
 git push -u origin main
 
 # Sync to public Gist for auto-updates
 echo -e "${YELLOW}Syncing to public Gist...${NC}"
-gh gist edit "$GIST_ID" -f script.js -f version.json
+gh gist edit "$GIST_ID" -f sms_automatisation.js -f version.json
 
 echo ""
 echo -e "${GREEN}=== Published v$FULL_VERSION! ===${NC}"
@@ -119,5 +119,5 @@ echo "Private repo: https://github.com/LogiPret/sms-mass-send"
 echo "Public Gist:  https://gist.github.com/HugoOtth/$GIST_ID"
 echo ""
 echo "Update URLs (public):"
-echo "  Script:  https://gist.githubusercontent.com/HugoOtth/$GIST_ID/raw/script.js"
+echo "  Script:  https://gist.githubusercontent.com/HugoOtth/$GIST_ID/raw/sms_automatisation.js"
 echo "  Version: https://gist.githubusercontent.com/HugoOtth/$GIST_ID/raw/version.json"
