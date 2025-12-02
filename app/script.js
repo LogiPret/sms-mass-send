@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.5";
+const SCRIPT_VERSION = "1.1.6";
 const SCRIPT_NAME = "SMS Mass Send"; // Must match filename in Scriptable
 const UPDATE_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/script.js";
 const VERSION_URL = "https://raw.githubusercontent.com/hugootth/sms-mass-send/main/version.json";
@@ -19,7 +19,6 @@ function isNewerVersion(latest, current) {
     const latestParts = latest.split('.').map(n => parseInt(n) || 0);
     const currentParts = current.split('.').map(n => parseInt(n) || 0);
     
-    // Pad to same length
     while (latestParts.length < 3) latestParts.push(0);
     while (currentParts.length < 3) currentParts.push(0);
     
