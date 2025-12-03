@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.25";
+const SCRIPT_VERSION = "1.1.26";
 const SCRIPT_NAME = "sms_automatisation"; // Must match filename in Scriptable
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -552,7 +552,9 @@ async function selectCSVFile() {
 // ============================================
 function detectSeparator(content) {
     // Prendre les premières lignes pour détecter le séparateur
-    let firstLines = content.split(/\r?\n/).slice(0, 5).join('\n');
+    // Handle all line endings: \r\n (Windows), \n (Unix/Mac), \r (old Mac)
+    let firstLines = content.split(/\r\n|\n|\r/).slice(0, 5).join('\n');
+      
     
     // Compter les occurrences de chaque séparateur potentiel
     let separators = [
@@ -571,7 +573,8 @@ function parseCSV(content) {
     let separator = sepInfo.char;
     console.log(`Séparateur détecté: ${sepInfo.name} (${sepInfo.count} occurrences)`);
     
-    let lines = content.split(/\r?\n/).filter(line => line.trim().length > 0);
+    // Handle all line endings: \r\n (Windows), \n (Unix/Mac), \r (old Mac CSV)
+    let lines = content.split(/\r\n|\n|\r/).filter(line => line.trim().length > 0);
     
     if (lines.length === 0) {
         return { headers: [], rows: [], columnMap: {}, separator: sepInfo.name };
