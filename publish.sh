@@ -1,6 +1,7 @@
 #!/bin/bash
 # Publish script - Updates public Gist and pushes to private repo
 # Gist is public (for auto-updates), repo is private (for development)
+# Only updates gist/version if sms_automatisation.js has changed
 
 # Configuration
 GIST_ID="0e0f68902ace0bfe94e0e83a8f89db2e"
@@ -12,6 +13,7 @@ BUILD_FILE=".build_number"
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BLUE='\033[0;34m'
 NC='\033[0m'
 
 echo -e "${GREEN}=== SMS Mass Send - Publisher ===${NC}"
@@ -22,6 +24,38 @@ if [ ! -f "$SCRIPT_SOURCE" ]; then
     echo "Run this script from the sms_mass_send directory"
     exit 1
 fi
+
+# Check if sms_automatisation.js has changed (staged or unstaged)
+SCRIPT_CHANGED=false
+if git diff --name-only HEAD 2>/dev/null | grep -q "sms_automatisation.js\|app/sms_automatisation.js"; then
+    SCRIPT_CHANGED=true
+fi
+if git diff --cached --name-only 2>/dev/null | grep -q "sms_automatisation.js\|app/sms_automatisation.js"; then
+    SCRIPT_CHANGED=true
+fi
+# Also check untracked changes
+if git status --porcelain 2>/dev/null | grep -q "sms_automatisation.js"; then
+    SCRIPT_CHANGED=true
+fi
+
+if [ "$SCRIPT_CHANGED" = false ]; then
+    echo -e "${BLUE}ℹ️  No changes to sms_automatisation.js${NC}"
+    echo -e "${BLUE}   Skipping version bump and gist update.${NC}"
+    echo ""
+    
+    # Still commit and push other changes
+    read -p "Push other changes to repo? (y/n): " PUSH_OTHER
+    if [ "$PUSH_OTHER" = "y" ]; then
+        git add -A
+        read -p "Commit message: " COMMIT_MSG
+        git commit -m "$COMMIT_MSG"
+        git push -u origin main
+        echo -e "${GREEN}✅ Pushed to repo (no gist update)${NC}"
+    fi
+    exit 0
+fi
+
+echo -e "${YELLOW}📱 Mobile script changed - updating version and gist${NC}"
 
 # Read current build number or start at 0
 if [ -f "$BUILD_FILE" ]; then
@@ -82,28 +116,41 @@ cat > "README.md" << 'EOF'
 
 Script Scriptable pour envoyer des SMS en masse depuis un fichier CSV.
 
-## Installation
+## Plateformes
+
+- **iPhone**: Script Scriptable avec auto-update
+- **Mac**: Application web Python (dossier `mac_app/`)
+
+## Installation iPhone
 
 1. Télécharge le script depuis le [Gist public](https://gist.github.com/HugoOtth/0e0f68902ace0bfe94e0e83a8f89db2e)
 2. Ouvre-le avec Scriptable sur iPhone
 3. C'est prêt!
 
+## Installation Mac
+
+```bash
+cd mac_app
+./SMS\ Campaign.command
+```
+
 ## Mise à jour automatique
 
-Le script vérifie automatiquement les mises à jour à chaque lancement.
+Le script iPhone vérifie automatiquement les mises à jour à chaque lancement.
 
 ## Fonctionnalités
 
 - 📂 Import CSV depuis iCloud/Files
 - 📱 Détection automatique des numéros (mobile > work > home)
-- 🔤 Variables personnalisées (**PRENOM**, **NOM**)
+- 🔤 Variables personnalisées (**PRENOM**, **NOM** ou {name})
 - 👁️ Prévisualisation avant envoi
 - 🇫🇷 Support des accents français
+- 🌐 Interface FR/EN (Mac)
 EOF
 
 # Git operations - push to private repo
 echo -e "${YELLOW}Pushing to private repo...${NC}"
-git add sms_automatisation.js version.json README.md "$BUILD_FILE" "$SCRIPT_SOURCE"
+git add -A
 git commit -m "v$FULL_VERSION: $CHANGELOG"
 git branch -M main
 git push -u origin main

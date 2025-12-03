@@ -1,0 +1,9 @@
+Name,Phone,Type
+Jean-Pierre,+14389266456,With plus
+Marie,(438) 926-6456,Parentheses
+François,438-926-6456,Dashes
+Robert,1-438-926-6456,With country code
+Émilie,14389266456,No separators
+José,+1 438 926 6456,Spaces
+Anne,438.926.6456,Dots
+Réjean,438 926 6456,Spaces only

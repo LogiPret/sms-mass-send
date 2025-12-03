@@ -1,0 +1,10 @@
+First Name,Last Name,Phone,Notes
+,Martínez,+14389266456,Missing first name
+Michel,,+15798819696,Missing last name
+,,,Empty row
+🎉,Emoji-Test,+14389266456,Emoji in name
+null,undefined,+15798819696,Programming keywords
+N/A,#REF!,+14389266456,Excel errors
+Test<script>,Injection,+15798819696,HTML injection
+MAJUSCULES,PARTOUT,+14389266456,All caps
+lowercase,everywhere,+15798819696,All lowercase

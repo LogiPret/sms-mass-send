@@ -1,0 +1,7 @@
+First Name,Last Name,Phone,Notes
+"Robert ""Bob""",Johnson,+14389266456,"Note with, comma"
+"Smith, John",Jr.,+15798819696,Inverted format
+"Prénom avec ""guillemets""","Nom avec ""quotes""",+14389266456,Escaped quotes
+"Line1
+Line2",Multiline,+15798819696,Multiline in field
+"  Spaces  ","  Around  ",+14389266456,Spaces in quotes

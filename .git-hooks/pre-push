@@ -1,10 +1,35 @@
 #!/bin/bash
 # Pre-push hook to auto-increment build number
+# Only triggers if sms_automatisation.js has changed
 
-# Path to build file
+# Path to files
 BUILD_FILE=".build_number"
-SCRIPT_SOURCE="app/script.js"
+SCRIPT_SOURCE="app/sms_automatisation.js"
 VERSION_JSON="version.json"
+
+# Check if sms_automatisation.js is being pushed (in the commits being pushed)
+# Get the range of commits being pushed
+while read local_ref local_sha remote_ref remote_sha; do
+    if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+        # New branch, check all commits
+        RANGE="$local_sha"
+    else
+        RANGE="$remote_sha..$local_sha"
+    fi
+    
+    # Check if any commit in the range changes sms_automatisation.js
+    if git diff --name-only "$RANGE" 2>/dev/null | grep -q "sms_automatisation.js\|app/sms_automatisation.js"; then
+        SCRIPT_CHANGED=true
+        break
+    fi
+done
+
+if [ "$SCRIPT_CHANGED" != "true" ]; then
+    echo "ℹ️  No changes to sms_automatisation.js - skipping version increment"
+    exit 0
+fi
+
+echo "📱 Mobile script changed - incrementing build number..."
 
 # Read current build number or start at 0
 if [ -f "$BUILD_FILE" ]; then
@@ -25,7 +50,7 @@ FULL_VERSION="${BASE_VERSION}.${BUILD}"
 sed -i '' "s/const SCRIPT_VERSION = \"[^\"]*\"/const SCRIPT_VERSION = \"$FULL_VERSION\"/" "$SCRIPT_SOURCE"
 
 # Update version.json
-CHANGELOG=$(cat "$VERSION_JSON" | grep '"changelog"' | sed 's/.*: *"\(.*\)".*/\1/')
+CHANGELOG=$(cat "$VERSION_JSON" 2>/dev/null | grep '"changelog"' | sed 's/.*: *"\(.*\)".*/\1/' || echo "Build $BUILD")
 cat > "$VERSION_JSON" << EOF
 {
     "version": "$FULL_VERSION",
@@ -36,9 +61,10 @@ cat > "$VERSION_JSON" << EOF
 EOF
 
 # Copy updated script to root
-cp "$SCRIPT_SOURCE" "script.js"
+cp "$SCRIPT_SOURCE" "sms_automatisation.js"
 
 # Add the changed files to the commit
-git add "$BUILD_FILE" "$SCRIPT_SOURCE" "$VERSION_JSON" "script.js"
+git add "$BUILD_FILE" "$SCRIPT_SOURCE" "$VERSION_JSON" "sms_automatisation.js"
+git commit --amend --no-edit
 
-echo "Build number incremented to $BUILD (version $FULL_VERSION)"
+echo "✅ Build number incremented to $BUILD (version $FULL_VERSION)"
