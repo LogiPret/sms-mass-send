@@ -5,8 +5,8 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.26";
-const SCRIPT_NAME = "sms_automatisation"; // Must match filename in Scriptable
+const SCRIPT_VERSION = "1.1.27";
+const SCRIPT_NAME = "sms_automatisation"; // Legacy - now uses Script.name() for actual name
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
 const VERSION_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/version.json";
@@ -96,42 +96,66 @@ async function installUpdate() {
             throw new Error("Downloaded script is empty or too short");
         }
         
-        // Try to find and update the script file
+        // BULLETPROOF: Use Script.name() to get the ACTUAL script name as shown in Scriptable
+        // This works regardless of what the user named their script
+        let actualScriptName = Script.name();
+        
+        // Scriptable stores scripts in iCloud if enabled, otherwise local
+        // We need to check both locations and find where this script actually lives
         let fm;
         let scriptPath;
         let success = false;
+        let errorDetails = [];
         
-        // Try iCloud first
+        // Try iCloud first (most common for Scriptable users)
         try {
             fm = FileManager.iCloud();
-            scriptPath = fm.joinPath(fm.documentsDirectory(), SCRIPT_NAME + ".js");
+            // Scriptable stores scripts in: iCloud Drive/Scriptable/
+            scriptPath = fm.joinPath(fm.documentsDirectory(), actualScriptName + ".js");
+            
+            // Check if file exists OR if we can write to this location
             if (fm.fileExists(scriptPath)) {
+                // File exists, update it
+                if (fm.isFileDownloaded(scriptPath) === false) {
+                    // Need to download from iCloud first
+                    await fm.downloadFileFromiCloud(scriptPath);
+                }
+                fm.writeString(scriptPath, newScript);
+                success = true;
+            } else {
+                // File doesn't exist at expected path - try to create it
+                // This handles edge cases where script was run from share sheet etc.
                 fm.writeString(scriptPath, newScript);
                 success = true;
             }
         } catch (e) {
-            // iCloud not available
+            errorDetails.push("iCloud: " + String(e).substring(0, 50));
         }
         
         // Try local storage if iCloud didn't work
         if (!success) {
             try {
                 fm = FileManager.local();
-                scriptPath = fm.joinPath(fm.documentsDirectory(), SCRIPT_NAME + ".js");
+                scriptPath = fm.joinPath(fm.documentsDirectory(), actualScriptName + ".js");
+                
                 if (fm.fileExists(scriptPath)) {
+                    fm.writeString(scriptPath, newScript);
+                    success = true;
+                } else {
+                    // Try to create it
                     fm.writeString(scriptPath, newScript);
                     success = true;
                 }
             } catch (e) {
-                // Local also failed
+                errorDetails.push("Local: " + String(e).substring(0, 50));
             }
         }
         
-        // If still no success, show error
+        // If still no success, show detailed error
         if (!success) {
             let alert = new Alert();
-            alert.title = "❌ Erreur";
-            alert.message = "Impossible de trouver le fichier script. Réinstallez le script manuellement.";
+            alert.title = "❌ Erreur de mise à jour";
+            alert.message = `Impossible d'écrire le fichier.\n\nScript: "${actualScriptName}"\n\nDétails:\n${errorDetails.join('\n')}\n\nSolution: Supprimez et réinstallez le script manuellement.`;
             alert.addAction("OK");
             await alert.present();
             return;
@@ -139,7 +163,7 @@ async function installUpdate() {
         
         let alert = new Alert();
         alert.title = "✅ Mise à jour installée!";
-        alert.message = "Le script a été mis à jour.\n\nVeuillez relancer le script.";
+        alert.message = `Script "${actualScriptName}" mis à jour.\n\nVeuillez relancer le script.`;
         alert.addAction("OK");
         await alert.present();
         
