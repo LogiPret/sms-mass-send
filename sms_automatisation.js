@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.27";
+const SCRIPT_VERSION = "1.1.28";
 const SCRIPT_NAME = "sms_automatisation"; // Legacy - now uses Script.name() for actual name
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -101,7 +101,6 @@ async function installUpdate() {
         let actualScriptName = Script.name();
         
         // Scriptable stores scripts in iCloud if enabled, otherwise local
-        // We need to check both locations and find where this script actually lives
         let fm;
         let scriptPath;
         let success = false;
