@@ -11,10 +11,319 @@ import json
 import csv
 import subprocess
 import os
+import sys
 import threading
+import urllib.request
+import urllib.error
 from pathlib import Path
 
+# ============================================
+# VERSION & AUTO-UPDATE CONFIGURATION
+# ============================================
+SCRIPT_VERSION = "1.0.2"
+GIST_ID = "3e89759cac04be452c935c90b5733eea"  # Will be updated with real ID after creating gist
+GIST_RAW_BASE = "https://gist.githubusercontent.com/HugoOtth"
+VERSION_URL = f"{GIST_RAW_BASE}/{GIST_ID}/raw/version.json"
+SCRIPT_URL = f"{GIST_RAW_BASE}/{GIST_ID}/raw/sms_campaign.py"
+
+# Cache directory for updates
+CACHE_DIR = Path.home() / ".sms_campaign"
+CACHED_SCRIPT = CACHE_DIR / "sms_campaign.py"
+
 PORT = 8765
+
+
+def is_newer_version(latest: str, current: str) -> bool:
+    """Compare version strings (e.g., '1.0.1' > '1.0.0')"""
+    try:
+        latest_parts = [int(x) for x in latest.split('.')]
+        current_parts = [int(x) for x in current.split('.')]
+        
+        while len(latest_parts) < 3:
+            latest_parts.append(0)
+        while len(current_parts) < 3:
+            current_parts.append(0)
+        
+        for i in range(3):
+            if latest_parts[i] > current_parts[i]:
+                return True
+            if latest_parts[i] < current_parts[i]:
+                return False
+        return False
+    except:
+        return False
+
+
+def check_for_updates() -> dict | None:
+    """Check if a newer version is available on the gist"""
+    try:
+        # Add cache buster
+        import time
+        cache_buster = int(time.time())
+        url = f"{VERSION_URL}?cb={cache_buster}"
+        
+        req = urllib.request.Request(url, headers={
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        })
+        
+        with urllib.request.urlopen(req, timeout=5) as response:
+            version_info = json.loads(response.read().decode())
+            
+            if is_newer_version(version_info.get('version', '0.0.0'), SCRIPT_VERSION):
+                return version_info
+    except Exception as e:
+        print(f"Update check failed: {e}")
+    
+    return None
+
+
+def download_update() -> bool:
+    """Download the latest script from gist"""
+    try:
+        import time
+        cache_buster = int(time.time())
+        url = f"{SCRIPT_URL}?cb={cache_buster}"
+        
+        req = urllib.request.Request(url, headers={
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache'
+        })
+        
+        with urllib.request.urlopen(req, timeout=30) as response:
+            new_script = response.read().decode()
+            
+            if len(new_script) < 100:
+                print("Downloaded script too short")
+                return False
+            
+            # Ensure cache directory exists
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            
+            # Write the new script
+            CACHED_SCRIPT.write_text(new_script, encoding='utf-8')
+            print(f"Update downloaded to {CACHED_SCRIPT}")
+            return True
+            
+    except Exception as e:
+        print(f"Download failed: {e}")
+        return False
+
+
+def run_cached_script():
+    """Run the cached (updated) script instead of this one"""
+    if CACHED_SCRIPT.exists():
+        print(f"Launching updated script: {CACHED_SCRIPT}")
+        os.execv(sys.executable, [sys.executable, str(CACHED_SCRIPT)] + sys.argv[1:])
+
+
+def get_cached_version() -> str | None:
+    """Get version from cached script if it exists"""
+    if not CACHED_SCRIPT.exists():
+        return None
+    
+    try:
+        content = CACHED_SCRIPT.read_text(encoding='utf-8')
+        for line in content.split('\n'):
+            if line.startswith('SCRIPT_VERSION'):
+                # Extract version from: SCRIPT_VERSION = "1.0.2"
+                version = line.split('=')[1].strip().strip('"\'')
+                return version
+    except:
+        pass
+    return None
+
+# ============================================
+# FRENCH CHARACTER FIXES
+# ============================================
+# Fixes corrupted French accents from latin-1 encoding issues
+# The � character appears when encoding is mismatched
+
+KNOWN_REPLACEMENTS = {
+    # É at start
+    'emilie': 'Émilie',
+    'eric': 'Éric',
+    'etienne': 'Étienne',
+    'eliane': 'Éliane',
+    'elise': 'Élise',
+    # é in middle
+    'stephanie': 'Stéphanie',
+    'stephane': 'Stéphane',
+    'frederic': 'Frédéric',
+    'frederique': 'Frédérique',
+    'frederike': 'Frédérike',
+    'valerie': 'Valérie',
+    'amelie': 'Amélie',
+    'melanie': 'Mélanie',
+    'helene': 'Hélène',
+    'mylene': 'Mylène',
+    'veronique': 'Véronique',
+    'sebastien': 'Sébastien',
+    'cedric': 'Cédric',
+    'gerard': 'Gérard',
+    'remi': 'Rémi',
+    'rene': 'René',
+    'andre': 'André',
+    'jerome': 'Jérôme',
+    'therese': 'Thérèse',
+    'genevieve': 'Geneviève',
+    'beatrice': 'Béatrice',
+    'benedicte': 'Bénédicte',
+    # Last names
+    'bedard': 'Bédard',
+    'bechard': 'Béchard',
+    'berube': 'Bérubé',
+    'bezeau': 'Bézeau',
+    'beaulieu': 'Beaulieu',
+    'levesque': 'Lévesque',
+    'leveille': 'Léveillé',
+    'legare': 'Légaré',
+    'leger': 'Léger',
+    'lepine': 'Lépine',
+    'lemelin': 'Lemelin',
+    'menard': 'Ménard',
+    'prevost': 'Prévost',
+    'theoret': 'Théoret',
+    'tetu': 'Têtu',
+    'seguin': 'Séguin',
+    'senecal': 'Sénécal',
+    'gregoire': 'Grégoire',
+    'cote': 'Côté',
+    'crete': 'Crête',
+    'pere': 'Père',
+    'mere': 'Mère',
+    'desrosiers': 'Desrosiers',
+    'francois': 'François',
+    'francoise': 'Françoise',
+    # Common words in data
+    'francais': 'Français',
+    'prenom': 'Prénom',
+    'adresse': 'Adresse',
+    'electronique': 'Électronique',
+    'preferee': 'Préférée',
+}
+
+import re
+
+def fix_french_accents(text):
+    """Fix corrupted French accents (� character) in names"""
+    if not text or not isinstance(text, str):
+        return text
+    
+    # Check if text contains the corruption character
+    if '�' not in text:
+        return text
+    
+    # Try to match against known names first
+    clean_text = text.replace('�', '')
+    lower_clean = clean_text.lower()
+    
+    for plain, accented in KNOWN_REPLACEMENTS.items():
+        if lower_clean == plain:
+            return accented
+    
+    # Specific pattern replacements for common corruptions
+    replacements = [
+        # Names starting with É
+        (r'^�milie$', 'Émilie'),
+        (r'^�ric$', 'Éric'),
+        (r'^�tienne$', 'Étienne'),
+        (r'^�liane$', 'Éliane'),
+        (r'^�lise$', 'Élise'),
+        
+        # Stéphane/Stéphanie
+        (r'St�phan', 'Stéphan'),
+        (r'St�ph', 'Stéph'),
+        
+        # Common names with �
+        (r'B�dard', 'Bédard'),
+        (r'G�rard', 'Gérard'),
+        (r'S�bastien', 'Sébastien'),
+        (r'C�dric', 'Cédric'),
+        (r'R�mi', 'Rémi'),
+        (r'R�gis', 'Régis'),
+        (r'D�nis', 'Dénis'),
+        (r'B�atrice', 'Béatrice'),
+        (r'Th�r�se', 'Thérèse'),
+        (r'H�l�ne', 'Hélène'),
+        (r'Genevi�ve', 'Geneviève'),
+        (r'V�ronique', 'Véronique'),
+        (r'Val�rie', 'Valérie'),
+        (r'Am�lie', 'Amélie'),
+        (r'M�lanie', 'Mélanie'),
+        (r'Myl�ne', 'Mylène'),
+        (r'Fr�d�ric', 'Frédéric'),
+        (r'Fr�d�rique', 'Frédérique'),
+        (r'Fran�ois', 'François'),
+        (r'Fran�oise', 'Françoise'),
+        (r'Fran�ais', 'Français'),
+        
+        # Header/column words
+        (r'Pr�nom', 'Prénom'),
+        (r'Pr�f�r�e', 'Préférée'),
+        (r'�lectronique', 'Électronique'),
+        (r'Adresse_�lec', 'Adresse_Élec'),
+        (r'Langue_Pr�f', 'Langue_Préf'),
+        
+        # Last names
+        (r'L�vesque', 'Lévesque'),
+        (r'L�ger', 'Léger'),
+        (r'L�pine', 'Lépine'),
+        (r'M�nard', 'Ménard'),
+        (r'S�guin', 'Séguin'),
+        (r'S�n�cal', 'Sénécal'),
+        (r'Pr�vost', 'Prévost'),
+        (r'Th�oret', 'Théoret'),
+        (r'Gr�goire', 'Grégoire'),
+        (r'B�rub�', 'Bérubé'),
+        (r'L�gar�', 'Légaré'),
+        (r'C�t�', 'Côté'),
+        (r'T�tu', 'Têtu'),
+        (r'Cr�te', 'Crête'),
+        
+        # Patterns ending in -ière
+        (r'li�re\b', 'lière'),
+        (r'ti�re\b', 'tière'),
+        (r'ni�re\b', 'nière'),
+        (r'ri�re\b', 'rière'),
+        (r'mi�re\b', 'mière'),
+        (r'pi�re\b', 'pière'),
+        (r'vi�re\b', 'vière'),
+        (r'ci�re\b', 'cière'),
+        (r'di�re\b', 'dière'),
+        (r'si�re\b', 'sière'),
+        (r'gi�re\b', 'gière'),
+        
+        # é at end after consonant (René, André, etc.)
+        (r'n�\b', 'né'),
+        (r'r�\b', 'ré'),
+        (r'l�\b', 'lé'),
+        (r't�\b', 'té'),
+        (r'd�\b', 'dé'),
+        (r's�\b', 'sé'),
+        (r'm�\b', 'mé'),
+        
+        # è patterns (before re, ve, le, ne at end of word)
+        (r'�ve\b', 'ève'),
+        (r'�le\b', 'èle'),
+        (r'�ne\b', 'ène'),
+        (r'�me\b', 'ème'),
+        (r'�te\b', 'ète'),
+        (r'�se\b', 'èse'),
+        (r'�ce\b', 'èce'),
+        (r'�de\b', 'ède'),
+        (r'�ge\b', 'ège'),
+        (r'�pe\b', 'èpe'),
+        (r'�re\b', 'ère'),
+    ]
+    
+    for pattern, replacement in replacements:
+        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
+    
+    # Default: remaining � is probably é
+    text = text.replace('�', 'é')
+    
+    return text
 
 HTML_PAGE = '''<!DOCTYPE html>
 <html>
@@ -401,6 +710,47 @@ HTML_PAGE = '''<!DOCTYPE html>
         
         input[type="file"] { display: none; }
         
+        /* Phone priority list */
+        .priority-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 12px 15px;
+            background: #2c2c2e;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            cursor: grab;
+            transition: all 0.2s;
+            border: 1px solid #3a3a3c;
+        }
+        .priority-item:hover {
+            background: #3a3a3c;
+        }
+        .priority-item.dragging {
+            opacity: 0.5;
+            cursor: grabbing;
+        }
+        .priority-item .priority-num {
+            background: #ff9f0a;
+            color: #000;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 12px;
+        }
+        .priority-item .priority-name {
+            flex: 1;
+            font-weight: 500;
+        }
+        .priority-item .priority-handle {
+            color: #5a5a5e;
+            font-size: 16px;
+        }
+        
         .footer-debug {
             margin-top: 20px;
             padding: 15px;
@@ -410,100 +760,134 @@ HTML_PAGE = '''<!DOCTYPE html>
             color: #5a5a5e;
             font-size: 12px;
         }
+        
+        /* Quit button */
+        .quit-btn {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            padding: 10px 20px;
+            background: #ff3b30;
+            color: #fff;
+            border: none;
+            border-radius: 8px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            box-shadow: 0 4px 15px rgba(255,59,48,0.3);
+            transition: all 0.2s;
+            z-index: 1000;
+        }
+        .quit-btn:hover {
+            background: #ff453a;
+            transform: translateY(-1px);
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <!-- Step 1: Select CSV -->
         <div id="step1">
-            <div class="step-indicator" data-i18n="step1of4">Step 1 of 4</div>
-            <h1>📁 <span data-i18n="selectFile">Select CSV File</span></h1>
-            <p class="description" data-i18n="selectFileDesc">Choose a CSV file containing your contacts with names and phone numbers.</p>
+            <div class="step-indicator" data-i18n="step1of4">Étape 1 sur 4</div>
+            <h1><span data-i18n="selectFile">Sélectionner le fichier CSV</span></h1>
+            <p class="description" data-i18n="selectFileDesc">Choisissez un fichier CSV contenant vos contacts avec noms et numéros de téléphone.</p>
             
             <div class="file-drop" id="fileDrop" onclick="document.getElementById('csvFile').click()">
                 <div class="file-icon">📄</div>
-                <div data-i18n="clickToSelect">Click to select CSV file</div>
+                <div data-i18n="clickToSelect">Cliquez pour sélectionner un fichier CSV</div>
                 <div class="file-name" id="fileName"></div>
             </div>
             <input type="file" id="csvFile" accept=".csv" onchange="handleFile(this)">
             
             <div class="nav-buttons">
                 <div></div>
-                <button class="btn btn-primary" id="next1" disabled onclick="goToStep(2)" data-i18n="next">Next →</button>
+                <button class="btn btn-primary" id="next1" disabled onclick="goToStep(2)" data-i18n="next">Suivant →</button>
             </div>
         </div>
         
         <!-- Step 2: Map Columns -->
         <div id="step2" style="display:none">
-            <div class="step-indicator" data-i18n="step2of4">Step 2 of 4</div>
-            <h1>📊 <span data-i18n="mapColumns">Map Columns</span></h1>
-            <p class="description" data-i18n="mapColumnsDesc">Click on column headers to assign them. First click = Name, Second click = Phone.</p>
+            <div class="step-indicator" data-i18n="step2of4">Étape 2 sur 4</div>
+            <h1><span data-i18n="mapColumns">Mapper les colonnes</span></h1>
+            <p class="description" data-i18n="mapColumnsDesc">Cliquez sur les en-têtes de colonnes pour les assigner. Premier clic = Nom, Deuxième clic = Téléphone.</p>
             
             <div class="mapping-legend">
                 <div class="legend-item">
                     <div class="legend-dot name"></div>
-                    <span data-i18n="nameColumn">Name Column</span>
+                    <span data-i18n="nameColumn">Colonne Nom</span>
                 </div>
                 <div class="legend-item">
                     <div class="legend-dot phone"></div>
-                    <span data-i18n="phoneColumn">Phone Column</span>
+                    <span data-i18n="phoneColumn">Colonne Téléphone</span>
                 </div>
             </div>
             
-            <div id="mappingMode" class="mapping-mode" data-i18n="clickName">👆 Click the NAME column</div>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
+                <div id="mappingMode" class="mapping-mode" data-i18n="clickName">Cliquez sur la colonne NOM</div>
+                <button class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;" onclick="resetMapping()" data-i18n="resetMapping">Réinitialiser</button>
+            </div>
             
             <div class="column-mapper" id="columnMapper"></div>
             
             <div class="info-box">
-                <span data-i18n="foundContacts">Found</span> <strong id="contactCount">0</strong> <span data-i18n="contacts">contacts</span>
+                <span data-i18n="foundContacts">Trouvé</span> <strong id="contactCount">0</strong> <span data-i18n="contacts">contacts</span>
+            </div>
+            
+            <!-- Multi-phone priority section (hidden by default) -->
+            <div id="phonePrioritySection" style="display:none; margin-top: 15px;">
+                <div class="info-box" style="background: #2a4a2a; border: 1px solid #30d158;">
+                    <strong><span data-i18n="multiPhoneDetected">Plusieurs colonnes téléphone détectées!</span></strong><br>
+                    <span style="font-size: 12px;" data-i18n="multiPhoneHelp">Glissez pour réordonner la priorité. Le premier numéro disponible sera utilisé.</span>
+                </div>
+                <div id="phonePriorityList" style="margin-top: 10px;"></div>
             </div>
             
             <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="goToStep(1)" data-i18n="back">← Back</button>
-                <button class="btn btn-primary" id="next2" disabled onclick="goToStep(3)" data-i18n="next">Next →</button>
+                <button class="btn btn-secondary" onclick="goToStep(1)" data-i18n="back">← Retour</button>
+                <button class="btn btn-primary" id="next2" disabled onclick="goToStep(3)" data-i18n="next">Suivant →</button>
             </div>
         </div>
         
         <!-- Step 3: Compose Message -->
         <div id="step3" style="display:none">
-            <div class="step-indicator" data-i18n="step3of4">Step 3 of 4</div>
-            <h1>💬 <span data-i18n="composeMessage">Compose Message</span></h1>
-            <p class="description" data-i18n="composeDesc">Write your message. Use {name} to personalize with recipient's name.</p>
+            <div class="step-indicator" data-i18n="step3of4">Étape 3 sur 4</div>
+            <h1><span data-i18n="composeMessage">Composer le message</span></h1>
+            <p class="description" data-i18n="composeDesc">Écrivez votre message. Utilisez {name} pour personnaliser avec le nom du destinataire.</p>
             
-            <button class="insert-btn" onclick="insertName()" data-i18n="insertName">Insert {name}</button>
-            <textarea id="message" data-placeholder-i18n="typemessage" placeholder="Type your message here..." oninput="updateCharCount()"></textarea>
-            <div class="char-count"><span id="charCount">0</span> <span data-i18n="characters">characters</span></div>
+            <button class="insert-btn" onclick="insertName()" data-i18n="insertName">Insérer Prénom</button>
+            <textarea id="message" data-placeholder-i18n="typemessage" placeholder="Tapez votre message ici..." oninput="updateCharCount()"></textarea>
+            <div class="char-count"><span id="charCount">0</span> <span data-i18n="characters">caractères</span></div>
             
             <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="goToStep(2)" data-i18n="back">← Back</button>
-                <button class="btn btn-primary" onclick="preparePreview()" data-i18n="next">Next →</button>
+                <button class="btn btn-secondary" onclick="goToStep(2)" data-i18n="back">← Retour</button>
+                <button class="btn btn-primary" onclick="preparePreview()" data-i18n="next">Suivant →</button>
             </div>
         </div>
         
         <!-- Step 4: Preview (Debug-style) -->
         <div id="step4" style="display:none">
-            <div class="step-indicator" data-i18n="step4of4">Step 4 of 4</div>
-            <h1>📱 <span data-i18n="previewSend">Preview & Send</span></h1>
+            <div class="step-indicator" data-i18n="step4of4">Étape 4 sur 4</div>
+            <h1><span data-i18n="previewSend">Aperçu & Envoi</span></h1>
             
             <div class="stats">
                 <div class="stat valid">
                     <div class="num" id="validCount">0</div>
-                    <div class="label" data-i18n="valid">Valid</div>
+                    <div class="label" data-i18n="valid">Valides</div>
                 </div>
                 <div class="stat skip">
                     <div class="num" id="skipCount">0</div>
-                    <div class="label" data-i18n="skipped">Skipped</div>
+                    <div class="label" data-i18n="skipped">Ignorés</div>
                 </div>
             </div>
             
-            <h2 data-i18n="validContacts">Valid Contacts</h2>
+            <h2 data-i18n="validContacts">Contacts valides</h2>
             <div class="scroll-container">
                 <table class="preview-table">
                     <thead>
                         <tr>
                             <th>#</th>
-                            <th data-i18n="name">Name</th>
-                            <th data-i18n="phone">Phone</th>
+                            <th data-i18n="name">Nom</th>
+                            <th data-i18n="phone">Téléphone</th>
                             <th data-i18n="source">Source</th>
                         </tr>
                     </thead>
@@ -512,14 +896,14 @@ HTML_PAGE = '''<!DOCTYPE html>
             </div>
             
             <div id="skippedSection" style="display:none">
-                <h2 data-i18n="skippedContacts">Skipped Contacts</h2>
+                <h2 data-i18n="skippedContacts">Contacts ignorés</h2>
                 <div class="scroll-container">
                     <table class="preview-table">
                         <thead>
                             <tr>
                                 <th>#</th>
-                                <th data-i18n="reason">Reason</th>
-                                <th data-i18n="rawData">Raw Data</th>
+                                <th data-i18n="reason">Raison</th>
+                                <th data-i18n="rawData">Données brutes</th>
                             </tr>
                         </thead>
                         <tbody id="skipList"></tbody>
@@ -527,19 +911,19 @@ HTML_PAGE = '''<!DOCTYPE html>
                 </div>
             </div>
             
-            <h2>📝 <span data-i18n="messagePreview">Message Preview</span></h2>
+            <h2><span data-i18n="messagePreview">Aperçu du message</span></h2>
             <div class="message-preview" id="messagePreview"></div>
             
             <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="goToStep(3)" data-i18n="back">← Back</button>
-                <button class="btn btn-success" onclick="startSending()" data-i18n="sendAll">📱 Send All SMS</button>
+                <button class="btn btn-secondary" onclick="goToStep(3)" data-i18n="back">← Retour</button>
+                <button class="btn btn-success" onclick="startSending()" data-i18n="sendAll">Envoyer tous les SMS</button>
             </div>
         </div>
         
         <!-- Step 5: Sending -->
         <div id="step5" style="display:none">
-            <h1>📤 <span data-i18n="sending">Sending Messages...</span></h1>
-            <p class="description" id="sendStatus" data-i18n="preparing">Preparing to send...</p>
+            <h1><span data-i18n="sending">Envoi en cours...</span></h1>
+            <p class="description" id="sendStatus" data-i18n="preparing">Préparation de l'envoi...</p>
             
             <div class="progress-container">
                 <div class="progress-bar" id="progressBar" style="width:0%"></div>
@@ -549,15 +933,18 @@ HTML_PAGE = '''<!DOCTYPE html>
             
             <div class="nav-buttons" id="doneButtons" style="display:none">
                 <div></div>
-                <button class="btn btn-primary" onclick="window.close()" data-i18n="done">Done</button>
+                <button class="btn btn-primary" onclick="window.close()" data-i18n="done">Terminé</button>
             </div>
         </div>
     </div>
     
+    <!-- Quit Button -->
+    <button class="quit-btn" onclick="quitApp()" data-i18n="stopCampaign">Arrêter la campagne</button>
+    
     <!-- Language Toggle -->
     <div class="lang-toggle">
-        <button class="lang-btn active" id="btnEN" onclick="setLang('en')">EN</button>
-        <button class="lang-btn" id="btnFR" onclick="setLang('fr')">FR</button>
+        <button class="lang-btn" id="btnEN" onclick="setLang('en')">EN</button>
+        <button class="lang-btn active" id="btnFR" onclick="setLang('fr')">FR</button>
     </div>
     
     <script>
@@ -577,14 +964,18 @@ HTML_PAGE = '''<!DOCTYPE html>
                 mapColumnsDesc: "Click on column headers to assign them. First click = Name, Second click = Phone.",
                 nameColumn: "Name Column",
                 phoneColumn: "Phone Column",
-                clickName: "👆 Click the NAME column",
-                clickPhone: "👆 Now click the PHONE column",
-                mappingDone: "✅ Mapping complete!",
+                clickName: "Click the NAME column",
+                clickPhone: "Now click the PHONE column",
+                clickPhoneMulti: "Click a PHONE column (or use priority below)",
+                mappingDone: "Mapping complete!",
+                resetMapping: "Reset",
+                multiPhoneDetected: "Multiple phone columns detected!",
+                multiPhoneHelp: "Drag to reorder priority. First available number will be used.",
                 foundContacts: "Found",
                 contacts: "contacts",
                 composeMessage: "Compose Message",
                 composeDesc: "Write your message. Use {name} to personalize with recipient's name.",
-                insertName: "Insert {name}",
+                insertName: "Insert First Name",
                 typemessage: "Type your message here...",
                 characters: "characters",
                 previewSend: "Preview & Send",
@@ -598,7 +989,8 @@ HTML_PAGE = '''<!DOCTYPE html>
                 reason: "Reason",
                 rawData: "Raw Data",
                 messagePreview: "Message Preview",
-                sendAll: "📱 Send All SMS",
+                sendAll: "Send All SMS",
+                stopCampaign: "Stop Campaign",
                 sending: "Sending Messages...",
                 preparing: "Preparing to send...",
                 done: "Done",
@@ -606,7 +998,8 @@ HTML_PAGE = '''<!DOCTYPE html>
                 noName: "No name",
                 confirmSend: "Send {count} SMS messages?",
                 sendingProgress: "Sending {current} of {total}...",
-                complete: "✅ Complete! Sent: {sent}, Failed: {failed}"
+                complete: "Complete! Sent: {sent}, Failed: {failed}",
+                updateAvailable: "Update Available"
             },
             fr: {
                 step1of4: "Étape 1 sur 4",
@@ -622,14 +1015,18 @@ HTML_PAGE = '''<!DOCTYPE html>
                 mapColumnsDesc: "Cliquez sur les en-têtes de colonnes pour les assigner. Premier clic = Nom, Deuxième clic = Téléphone.",
                 nameColumn: "Colonne Nom",
                 phoneColumn: "Colonne Téléphone",
-                clickName: "👆 Cliquez sur la colonne NOM",
-                clickPhone: "👆 Maintenant cliquez sur la colonne TÉLÉPHONE",
-                mappingDone: "✅ Mapping terminé!",
+                clickName: "Cliquez sur la colonne NOM",
+                clickPhone: "Maintenant cliquez sur la colonne TÉLÉPHONE",
+                clickPhoneMulti: "Cliquez sur une colonne TÉLÉPHONE (ou utilisez la priorité ci-dessous)",
+                mappingDone: "Mapping terminé!",
+                resetMapping: "Réinitialiser",
+                multiPhoneDetected: "Plusieurs colonnes téléphone détectées!",
+                multiPhoneHelp: "Glissez pour réordonner la priorité. Le premier numéro disponible sera utilisé.",
                 foundContacts: "Trouvé",
                 contacts: "contacts",
                 composeMessage: "Composer le message",
                 composeDesc: "Écrivez votre message. Utilisez {name} pour personnaliser avec le nom du destinataire.",
-                insertName: "Insérer {name}",
+                insertName: "Insérer Prénom",
                 typemessage: "Tapez votre message ici...",
                 characters: "caractères",
                 previewSend: "Aperçu & Envoi",
@@ -643,7 +1040,8 @@ HTML_PAGE = '''<!DOCTYPE html>
                 reason: "Raison",
                 rawData: "Données brutes",
                 messagePreview: "Aperçu du message",
-                sendAll: "📱 Envoyer tous les SMS",
+                sendAll: "Envoyer tous les SMS",
+                stopCampaign: "Arrêter la campagne",
                 sending: "Envoi en cours...",
                 preparing: "Préparation de l'envoi...",
                 done: "Terminé",
@@ -651,11 +1049,12 @@ HTML_PAGE = '''<!DOCTYPE html>
                 noName: "Pas de nom",
                 confirmSend: "Envoyer {count} messages SMS?",
                 sendingProgress: "Envoi {current} sur {total}...",
-                complete: "✅ Terminé! Envoyés: {sent}, Échoués: {failed}"
+                complete: "Terminé! Envoyés: {sent}, Échoués: {failed}",
+                updateAvailable: "Mise à jour disponible"
             }
         };
         
-        let currentLang = 'en';
+        let currentLang = 'fr';
         
         function setLang(lang) {
             currentLang = lang;
@@ -687,6 +1086,67 @@ HTML_PAGE = '''<!DOCTYPE html>
             return text;
         }
         
+        // ============ FRENCH ACCENT FIXES ============
+        const knownReplacements = {
+            'emilie': 'Émilie', 'eric': 'Éric', 'etienne': 'Étienne', 'eliane': 'Éliane', 'elise': 'Élise',
+            'stephanie': 'Stéphanie', 'stephane': 'Stéphane', 'frederic': 'Frédéric', 'frederique': 'Frédérique',
+            'valerie': 'Valérie', 'amelie': 'Amélie', 'melanie': 'Mélanie', 'helene': 'Hélène', 'mylene': 'Mylène',
+            'veronique': 'Véronique', 'sebastien': 'Sébastien', 'cedric': 'Cédric', 'gerard': 'Gérard',
+            'remi': 'Rémi', 'rene': 'René', 'andre': 'André', 'jerome': 'Jérôme', 'therese': 'Thérèse',
+            'genevieve': 'Geneviève', 'beatrice': 'Béatrice', 'benedicte': 'Bénédicte',
+            'bedard': 'Bédard', 'bechard': 'Béchard', 'berube': 'Bérubé', 'bezeau': 'Bézeau',
+            'levesque': 'Lévesque', 'leveille': 'Léveillé', 'legare': 'Légaré', 'leger': 'Léger',
+            'lepine': 'Lépine', 'menard': 'Ménard', 'prevost': 'Prévost', 'theoret': 'Théoret',
+            'tetu': 'Têtu', 'seguin': 'Séguin', 'senecal': 'Sénécal', 'gregoire': 'Grégoire',
+            'cote': 'Côté', 'crete': 'Crête', 'pere': 'Père', 'mere': 'Mère',
+            'francois': 'François', 'francoise': 'Françoise',
+            'francais': 'Français', 'prenom': 'Prénom', 'adresse': 'Adresse',
+            'electronique': 'Électronique', 'preferee': 'Préférée'
+        };
+        
+        function fixFrenchAccents(text) {
+            if (!text || typeof text !== 'string' || !text.includes('�')) return text;
+            
+            // Try known names first
+            let cleanText = text.replace(/�/g, '').toLowerCase();
+            if (knownReplacements[cleanText]) return knownReplacements[cleanText];
+            
+            // Pattern replacements
+            const patterns = [
+                [/^�milie$/i, 'Émilie'], [/^�ric$/i, 'Éric'], [/^�tienne$/i, 'Étienne'],
+                [/St�phan/gi, 'Stéphan'], [/St�ph/gi, 'Stéph'], [/B�dard/gi, 'Bédard'],
+                [/G�rard/gi, 'Gérard'], [/S�bastien/gi, 'Sébastien'], [/C�dric/gi, 'Cédric'],
+                [/R�mi/gi, 'Rémi'], [/B�atrice/gi, 'Béatrice'], [/Th�r�se/gi, 'Thérèse'],
+                [/H�l�ne/gi, 'Hélène'], [/Genevi�ve/gi, 'Geneviève'], [/V�ronique/gi, 'Véronique'],
+                [/Val�rie/gi, 'Valérie'], [/Am�lie/gi, 'Amélie'], [/M�lanie/gi, 'Mélanie'],
+                [/Myl�ne/gi, 'Mylène'], [/Fr�d�ric/gi, 'Frédéric'], [/Fr�d�rique/gi, 'Frédérique'],
+                [/Fran�ois/gi, 'François'], [/Fran�oise/gi, 'Françoise'],
+                [/Fran�ais/gi, 'Français'], [/Pr�nom/gi, 'Prénom'], [/Pr�f�r�e/gi, 'Préférée'],
+                [/�lectronique/gi, 'Électronique'], [/Adresse_�lec/gi, 'Adresse_Élec'],
+                [/L�vesque/gi, 'Lévesque'], [/L�ger/gi, 'Léger'], [/L�pine/gi, 'Lépine'],
+                [/M�nard/gi, 'Ménard'], [/S�guin/gi, 'Séguin'], [/S�n�cal/gi, 'Sénécal'],
+                [/Pr�vost/gi, 'Prévost'], [/Th�oret/gi, 'Théoret'], [/Gr�goire/gi, 'Grégoire'],
+                [/B�rub�/gi, 'Bérubé'], [/L�gar�/gi, 'Légaré'], [/C�t�/gi, 'Côté'],
+                [/T�tu/gi, 'Têtu'], [/Cr�te/gi, 'Crête'],
+                // -ière endings
+                [/li�re\\b/gi, 'lière'], [/ti�re\\b/gi, 'tière'], [/ni�re\\b/gi, 'nière'],
+                [/ri�re\\b/gi, 'rière'], [/mi�re\\b/gi, 'mière'], [/vi�re\\b/gi, 'vière'],
+                // é at end (René, André)
+                [/n�\\b/g, 'né'], [/r�\\b/g, 'ré'], [/l�\\b/g, 'lé'], [/t�\\b/g, 'té'],
+                [/d�\\b/g, 'dé'], [/s�\\b/g, 'sé'], [/m�\\b/g, 'mé'],
+                // è patterns (before consonant+e at end)
+                [/�ve\\b/gi, 'ève'], [/�le\\b/gi, 'èle'], [/�ne\\b/gi, 'ène'],
+                [/�re\\b/gi, 'ère'], [/�me\\b/gi, 'ème'], [/�te\\b/gi, 'ète']
+            ];
+            
+            for (const [pattern, replacement] of patterns) {
+                text = text.replace(pattern, replacement);
+            }
+            
+            // Default: remaining � is probably é
+            return text.replace(/�/g, 'é');
+        }
+        
         // ============ DATA ============
         let csvData = [];
         let headers = [];
@@ -694,7 +1154,12 @@ HTML_PAGE = '''<!DOCTYPE html>
         let skipped = [];
         let nameCol = -1;
         let phoneCol = -1;
+        let phoneCols = []; // Array of {index, name} for multi-phone columns
+        let phonePriorityOrder = []; // User-defined priority order
         let mappingStep = 0; // 0 = select name, 1 = select phone, 2 = done
+        
+        // Phone column keywords for auto-detection
+        const phoneKeywords = ['phone', 'mobile', 'cell', 'telephone', 'tel', 'work', 'home', 'maison', 'travail', 'bureau', 'cellulaire', 'domicile'];
         
         // ============ FILE HANDLING ============
         function handleFile(input) {
@@ -715,10 +1180,13 @@ HTML_PAGE = '''<!DOCTYPE html>
                 const commas = (firstLine.match(/,/g) || []).length;
                 const separator = semicolons > commas ? ';' : ',';
                 
-                headers = parseCSVLine(lines[0], separator);
+                // Parse and fix French accents in headers
+                headers = parseCSVLine(lines[0], separator).map(h => fixFrenchAccents(h));
+                
+                // Parse data rows and fix French accents in all values
                 csvData = lines.slice(1).map((line, idx) => ({
                     lineNumber: idx + 2,
-                    values: parseCSVLine(line, separator)
+                    values: parseCSVLine(line, separator).map(v => fixFrenchAccents(v))
                 }));
                 
                 document.getElementById('contactCount').textContent = csvData.length;
@@ -749,6 +1217,116 @@ HTML_PAGE = '''<!DOCTYPE html>
         }
         
         // ============ COLUMN MAPPER ============
+        function detectPhoneColumns() {
+            // Detect all columns that look like phone columns
+            phoneCols = [];
+            const mobileKeywords = ['mobile', 'cell', 'cellulaire', 'cellular', 'portable'];
+            const workKeywords = ['work', 'travail', 'bureau', 'office', 'business', 'professionnel'];
+            const homeKeywords = ['home', 'maison', 'domicile', 'residence', 'personnel'];
+            const genericKeywords = ['phone', 'telephone', 'tel', 'numero', 'number'];
+            
+            headers.forEach((header, idx) => {
+                const h = header.toLowerCase();
+                let type = null;
+                
+                if (mobileKeywords.some(k => h.includes(k))) type = 'mobile';
+                else if (workKeywords.some(k => h.includes(k))) type = 'work';
+                else if (homeKeywords.some(k => h.includes(k))) type = 'home';
+                else if (genericKeywords.some(k => h.includes(k))) type = 'phone';
+                
+                if (type) {
+                    phoneCols.push({ index: idx, name: header, type: type });
+                }
+            });
+            
+            // Set default priority order (mobile first, then work, then home, then generic)
+            const typePriority = ['mobile', 'work', 'home', 'phone'];
+            phoneCols.sort((a, b) => typePriority.indexOf(a.type) - typePriority.indexOf(b.type));
+            phonePriorityOrder = phoneCols.map(c => c.index);
+            
+            return phoneCols;
+        }
+        
+        function buildPhonePriorityList() {
+            const container = document.getElementById('phonePriorityList');
+            let html = '';
+            
+            phonePriorityOrder.forEach((colIdx, priority) => {
+                const col = phoneCols.find(c => c.index === colIdx);
+                if (!col) return;
+                
+                const typeLabel = col.type === 'mobile' ? 'Mobile' : col.type === 'work' ? 'Work' : col.type === 'home' ? 'Home' : 'Phone';
+                html += `<div class="priority-item" draggable="true" data-col="${colIdx}">
+                    <div class="priority-num">${priority + 1}</div>
+                    <div class="priority-name"><span style="color:#8e8e93;font-size:11px;">[${typeLabel}]</span> ${col.name}</div>
+                    <div class="priority-handle">☰</div>
+                </div>`;
+            });
+            
+            container.innerHTML = html;
+            
+            // Add drag and drop handlers
+            const items = container.querySelectorAll('.priority-item');
+            items.forEach(item => {
+                item.addEventListener('dragstart', handleDragStart);
+                item.addEventListener('dragover', handleDragOver);
+                item.addEventListener('drop', handleDrop);
+                item.addEventListener('dragend', handleDragEnd);
+            });
+        }
+        
+        let draggedItem = null;
+        
+        function handleDragStart(e) {
+            draggedItem = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+        }
+        
+        function handleDragOver(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+        }
+        
+        function handleDrop(e) {
+            e.preventDefault();
+            if (draggedItem !== this) {
+                // Get current positions
+                const container = document.getElementById('phonePriorityList');
+                const items = [...container.querySelectorAll('.priority-item')];
+                const draggedIdx = items.indexOf(draggedItem);
+                const targetIdx = items.indexOf(this);
+                
+                // Reorder in DOM
+                if (draggedIdx < targetIdx) {
+                    this.parentNode.insertBefore(draggedItem, this.nextSibling);
+                } else {
+                    this.parentNode.insertBefore(draggedItem, this);
+                }
+                
+                // Update priority order array
+                updatePriorityFromDOM();
+            }
+        }
+        
+        function handleDragEnd() {
+            this.classList.remove('dragging');
+            draggedItem = null;
+        }
+        
+        function updatePriorityFromDOM() {
+            const container = document.getElementById('phonePriorityList');
+            const items = container.querySelectorAll('.priority-item');
+            phonePriorityOrder = [];
+            
+            items.forEach((item, idx) => {
+                const colIdx = parseInt(item.dataset.col);
+                phonePriorityOrder.push(colIdx);
+                // Update priority number display
+                item.querySelector('.priority-num').textContent = idx + 1;
+            });
+        }
+        
         function buildColumnMapper() {
             const mapper = document.getElementById('columnMapper');
             const maxCols = Math.min(headers.length, 6); // Show max 6 columns
@@ -778,6 +1356,19 @@ HTML_PAGE = '''<!DOCTYPE html>
             }
             
             mapper.innerHTML = html;
+            
+            // Detect phone columns
+            detectPhoneColumns();
+            
+            // Show priority section if multiple phone columns detected
+            const prioritySection = document.getElementById('phonePrioritySection');
+            if (phoneCols.length > 1) {
+                prioritySection.style.display = 'block';
+                buildPhonePriorityList();
+            } else {
+                prioritySection.style.display = 'none';
+            }
+            
             updateMappingMode();
         }
         
@@ -786,11 +1377,27 @@ HTML_PAGE = '''<!DOCTYPE html>
                 // Selecting name column
                 nameCol = col;
                 mappingStep = 1;
-            } else if (mappingStep === 1) {
-                // Selecting phone column
+                
+                // If multiple phone columns detected, enable Next right away (user can use priority)
+                if (phoneCols.length > 1) {
+                    document.getElementById('next2').disabled = false;
+                }
+            } else if (mappingStep === 1 || (mappingStep === 2 && phoneCols.length > 1 && phoneCol === -1)) {
+                // Selecting phone column (or overriding in multi-phone mode)
                 if (col === nameCol) return; // Can't select same column
                 phoneCol = col;
                 mappingStep = 2;
+                
+                // If in multi-phone mode, move selected column to top of priority
+                if (phoneCols.length > 1) {
+                    const idx = phonePriorityOrder.indexOf(col);
+                    if (idx > 0) {
+                        phonePriorityOrder.splice(idx, 1);
+                        phonePriorityOrder.unshift(col);
+                        buildPhonePriorityList();
+                    }
+                }
+                
                 document.getElementById('next2').disabled = false;
             }
             
@@ -805,14 +1412,34 @@ HTML_PAGE = '''<!DOCTYPE html>
             updateMappingMode();
         }
         
+        function resetMapping() {
+            nameCol = -1;
+            phoneCol = -1;
+            mappingStep = 0;
+            document.getElementById('next2').disabled = true;
+            
+            // Remove all selection classes
+            document.querySelectorAll('.header-cell').forEach(cell => {
+                cell.classList.remove('selected-name', 'selected-phone');
+            });
+            
+            updateMappingMode();
+        }
+        
         function updateMappingMode() {
             const mode = document.getElementById('mappingMode');
             if (mappingStep === 0) {
                 mode.textContent = t('clickName');
                 mode.style.background = '#30d158';
             } else if (mappingStep === 1) {
-                mode.textContent = t('clickPhone');
-                mode.style.background = '#ff9f0a';
+                // If multiple phone columns, show different message
+                if (phoneCols.length > 1) {
+                    mode.textContent = t('clickPhoneMulti') || 'Click a PHONE column (or use priority below)';
+                    mode.style.background = '#ff9f0a';
+                } else {
+                    mode.textContent = t('clickPhone');
+                    mode.style.background = '#ff9f0a';
+                }
             } else {
                 mode.textContent = t('mappingDone');
                 mode.style.background = '#0a84ff';
@@ -834,7 +1461,7 @@ HTML_PAGE = '''<!DOCTYPE html>
             const ta = document.getElementById('message');
             const pos = ta.selectionStart;
             const text = ta.value;
-            ta.value = text.slice(0, pos) + '{name}' + text.slice(pos);
+            ta.value = text.slice(0, pos) + '{name} ' + text.slice(pos);
             updateCharCount();
             ta.focus();
         }
@@ -946,9 +1573,39 @@ HTML_PAGE = '''<!DOCTYPE html>
             skipped = [];
             
             csvData.forEach(row => {
-                const name = row.values[nameCol] || '';
-                const rawPhone = row.values[phoneCol] || '';
-                const { phone, source } = extractBestPhone(rawPhone);
+                const rawName = row.values[nameCol] || '';
+                
+                // Get phone based on whether we have multiple phone columns or single selection
+                let phone = '';
+                let source = '';
+                
+                if (phoneCols.length > 1 && phonePriorityOrder.length > 0) {
+                    // Multi-phone column mode: use priority order
+                    for (const colIdx of phonePriorityOrder) {
+                        const rawPhone = row.values[colIdx] || '';
+                        if (rawPhone.trim()) {
+                            const result = extractBestPhone(rawPhone);
+                            if (result.phone) {
+                                phone = result.phone;
+                                const col = phoneCols.find(c => c.index === colIdx);
+                                source = col ? col.name : result.source;
+                                break; // Found a valid phone, stop looking
+                            }
+                        }
+                    }
+                    if (!phone) {
+                        source = 'no phone in priority cols';
+                    }
+                } else {
+                    // Single phone column mode
+                    const rawPhone = row.values[phoneCol] || '';
+                    const result = extractBestPhone(rawPhone);
+                    phone = result.phone;
+                    source = result.source;
+                }
+                
+                // Fix French accents in name
+                const name = fixFrenchAccents(rawName.trim());
                 
                 if (!phone) {
                     skipped.push({
@@ -956,7 +1613,7 @@ HTML_PAGE = '''<!DOCTYPE html>
                         reason: t('noPhone'),
                         raw: name + ' | ' + rawPhone.substring(0, 40)
                     });
-                } else if (!name.trim()) {
+                } else if (!name) {
                     skipped.push({
                         lineNumber: row.lineNumber,
                         reason: t('noName'),
@@ -965,10 +1622,10 @@ HTML_PAGE = '''<!DOCTYPE html>
                 } else {
                     recipients.push({
                         lineNumber: row.lineNumber,
-                        name: name.trim(),
+                        name: name,
                         phone: phone,
                         phoneSource: source,
-                        message: msg.replace(/{name}/g, name.trim())
+                        message: msg.replace(/{name}/g, name)
                     });
                 }
             });
@@ -977,9 +1634,9 @@ HTML_PAGE = '''<!DOCTYPE html>
             document.getElementById('validCount').textContent = recipients.length;
             document.getElementById('skipCount').textContent = skipped.length;
             
-            // Populate valid list
+            // Populate valid list - show ALL entries for quick verification
             const validList = document.getElementById('validList');
-            validList.innerHTML = recipients.slice(0, 50).map(r => `
+            validList.innerHTML = recipients.map(r => `
                 <tr>
                     <td>${r.lineNumber}</td>
                     <td>${r.name}</td>
@@ -987,10 +1644,6 @@ HTML_PAGE = '''<!DOCTYPE html>
                     <td class="source">${r.phoneSource || ''}</td>
                 </tr>
             `).join('');
-            
-            if (recipients.length > 50) {
-                validList.innerHTML += `<tr><td colspan="4" style="color:#5a5a5e;text-align:center">... ${recipients.length - 50} more</td></tr>`;
-            }
             
             // Populate skipped list
             if (skipped.length > 0) {
@@ -1056,18 +1709,162 @@ HTML_PAGE = '''<!DOCTYPE html>
             status.textContent = t('complete', {sent: sent, failed: failed});
             document.getElementById('doneButtons').style.display = 'flex';
         }
+        
+        // ============ SHUTDOWN ON CLOSE ============
+        function quitApp() {
+            fetch('/shutdown').then(() => window.close());
+        }
+        
+        window.addEventListener('beforeunload', function() {
+            navigator.sendBeacon('/shutdown');
+        });
+        
+        window.addEventListener('unload', function() {
+            navigator.sendBeacon('/shutdown');
+        });
+        
+        // ============ AUTO-UPDATE ============
+        async function checkUpdate() {
+            try {
+                const resp = await fetch('/check-update');
+                const data = await resp.json();
+                if (data.hasUpdate) {
+                    showUpdateModal(data);
+                }
+            } catch(e) {
+                console.log('Update check failed:', e);
+            }
+        }
+        
+        function showUpdateModal(data) {
+            const modal = document.createElement('div');
+            modal.id = 'updateModal';
+            modal.style.cssText = `
+                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+                background: rgba(0,0,0,0.8); display: flex;
+                align-items: center; justify-content: center; z-index: 9999;
+            `;
+            
+            const content = document.createElement('div');
+            content.style.cssText = `
+                background: #2c2c2e; padding: 30px; border-radius: 16px;
+                max-width: 400px; text-align: center; color: #fff;
+            `;
+            
+            const title = translations[currentLang].updateAvailable || 'Mise à jour disponible';
+            const updateBtn = currentLang === 'fr' ? 'Mettre à jour' : 'Update';
+            const laterBtn = currentLang === 'fr' ? 'Plus tard' : 'Later';
+            const current = currentLang === 'fr' ? 'Version actuelle' : 'Current version';
+            const newVer = currentLang === 'fr' ? 'Nouvelle version' : 'New version';
+            
+            content.innerHTML = \`
+                <h2 style="margin-bottom: 15px;">🔄 \${title}</h2>
+                <p style="color: #888; margin-bottom: 10px;">\${current}: \${data.currentVersion}</p>
+                <p style="color: #30d158; font-weight: bold; margin-bottom: 15px;">\${newVer}: \${data.latestVersion}</p>
+                \${data.changelog ? \`<p style="color: #aaa; font-size: 14px; margin-bottom: 20px;">\${data.changelog}</p>\` : ''}
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button onclick="applyUpdate()" style="
+                        background: #30d158; color: #000; border: none; padding: 12px 24px;
+                        border-radius: 8px; font-weight: bold; cursor: pointer;
+                    ">\${updateBtn}</button>
+                    <button onclick="closeUpdateModal()" style="
+                        background: #48484a; color: #fff; border: none; padding: 12px 24px;
+                        border-radius: 8px; cursor: pointer;
+                    ">\${laterBtn}</button>
+                </div>
+            \`;
+            
+            modal.appendChild(content);
+            document.body.appendChild(modal);
+        }
+        
+        function closeUpdateModal() {
+            const modal = document.getElementById('updateModal');
+            if (modal) modal.remove();
+        }
+        
+        async function applyUpdate() {
+            const modal = document.getElementById('updateModal');
+            if (modal) {
+                modal.querySelector('div').innerHTML = \`
+                    <h2 style="margin-bottom: 15px;">⏳ \${currentLang === 'fr' ? 'Téléchargement...' : 'Downloading...'}</h2>
+                    <p style="color: #888;">\${currentLang === 'fr' ? 'Veuillez patienter' : 'Please wait'}</p>
+                \`;
+            }
+            
+            try {
+                const resp = await fetch('/apply-update', { method: 'POST' });
+                const data = await resp.json();
+                
+                if (data.success) {
+                    if (modal) {
+                        modal.querySelector('div').innerHTML = \`
+                            <h2 style="margin-bottom: 15px;">✅ \${currentLang === 'fr' ? 'Mise à jour installée!' : 'Update installed!'}</h2>
+                            <p style="color: #888; margin-bottom: 20px;">\${currentLang === 'fr' ? 'Relancez l'"'"'application' : 'Please restart the application'}</p>
+                            <button onclick="quitApp()" style="
+                                background: #30d158; color: #000; border: none; padding: 12px 24px;
+                                border-radius: 8px; font-weight: bold; cursor: pointer;
+                            ">\${currentLang === 'fr' ? 'Quitter' : 'Quit'}</button>
+                        \`;
+                    }
+                } else {
+                    if (modal) {
+                        modal.querySelector('div').innerHTML = \`
+                            <h2 style="margin-bottom: 15px;">❌ \${currentLang === 'fr' ? 'Erreur' : 'Error'}</h2>
+                            <p style="color: #ff453a;">\${data.error || 'Unknown error'}</p>
+                            <button onclick="closeUpdateModal()" style="
+                                background: #48484a; color: #fff; border: none; padding: 12px 24px;
+                                border-radius: 8px; cursor: pointer; margin-top: 15px;
+                            ">OK</button>
+                        \`;
+                    }
+                }
+            } catch(e) {
+                console.error('Update failed:', e);
+                closeUpdateModal();
+            }
+        }
+        
+        // Check for updates on page load
+        setTimeout(checkUpdate, 1000);
     </script>
 </body>
 </html>'''
 
 
 class SMSHandler(http.server.SimpleHTTPRequestHandler):
+    pending_update = None
+    current_version = SCRIPT_VERSION
+    
     def do_GET(self):
         if self.path == '/' or self.path == '/index.html':
             self.send_response(200)
             self.send_header('Content-type', 'text/html')
             self.end_headers()
             self.wfile.write(HTML_PAGE.encode())
+        elif self.path == '/shutdown':
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'OK')
+            # Shutdown server in background thread
+            threading.Thread(target=self.server.shutdown, daemon=True).start()
+        elif self.path == '/check-update':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            
+            if SMSHandler.pending_update:
+                response = {
+                    'hasUpdate': True,
+                    'currentVersion': SMSHandler.current_version,
+                    'latestVersion': SMSHandler.pending_update.get('version', '?'),
+                    'changelog': SMSHandler.pending_update.get('changelog', '')
+                }
+            else:
+                response = {'hasUpdate': False}
+            
+            self.wfile.write(json.dumps(response).encode())
         else:
             self.send_error(404)
     
@@ -1077,12 +1874,28 @@ class SMSHandler(http.server.SimpleHTTPRequestHandler):
             post_data = self.rfile.read(content_length)
             data = json.loads(post_data.decode())
             
+            
             success = send_via_applescript(data['phone'], data['message'])
             
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             self.wfile.write(json.dumps({'success': success}).encode())
+        
+        elif self.path == '/apply-update':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            
+            try:
+                if download_update():
+                    response = {'success': True}
+                else:
+                    response = {'success': False, 'error': 'Download failed'}
+            except Exception as e:
+                response = {'success': False, 'error': str(e)}
+            
+            self.wfile.write(json.dumps(response).encode())
     
     def log_message(self, format, *args):
         pass
@@ -1114,12 +1927,58 @@ def send_via_applescript(phone, message):
         return False
 
 
+class ReusableTCPServer(socketserver.TCPServer):
+    """TCP Server that allows port reuse immediately after shutdown"""
+    allow_reuse_address = True
+
+
+def check_and_apply_updates() -> bool:
+    """
+    Check for updates and handle them.
+    Returns True if we should exit (update applied), False to continue.
+    """
+    # First, check if there's a newer cached version we should use
+    cached_version = get_cached_version()
+    if cached_version and is_newer_version(cached_version, SCRIPT_VERSION):
+        # We're running an old version but a newer one is cached
+        # If we're not already running FROM the cache, switch to it
+        current_script = Path(sys.argv[0]).resolve() if sys.argv else None
+        if current_script != CACHED_SCRIPT.resolve():
+            print(f"Newer cached version found ({cached_version} > {SCRIPT_VERSION}), launching it...")
+            run_cached_script()
+            return True  # Won't reach here due to exec
+    
+    # Check online for updates
+    update_info = check_for_updates()
+    if update_info:
+        latest_version = update_info.get('version', '?')
+        changelog = update_info.get('changelog', '')
+        print(f"Update available: {latest_version} (current: {SCRIPT_VERSION})")
+        
+        # Return update info to show in UI
+        return update_info
+    
+    return None
+
+
 def main():
+    # Check for updates before starting
+    update_info = check_and_apply_updates()
+    
+    # Kill any existing process on the port
     os.system(f"lsof -ti:{PORT} | xargs kill -9 2>/dev/null")
     
-    with socketserver.TCPServer(("", PORT), SMSHandler) as httpd:
+    # Small delay to ensure port is released
+    import time
+    time.sleep(0.5)
+    
+    # Store update info for the handler to access
+    SMSHandler.pending_update = update_info
+    SMSHandler.current_version = SCRIPT_VERSION
+    
+    with ReusableTCPServer(("", PORT), SMSHandler) as httpd:
         url = f"http://localhost:{PORT}"
-        print(f"SMS Campaign running at {url}")
+        print(f"SMS Campaign v{SCRIPT_VERSION} running at {url}")
         print("Press Ctrl+C to stop")
         
         webbrowser.open(url)
@@ -1128,6 +1987,7 @@ def main():
             httpd.serve_forever()
         except KeyboardInterrupt:
             print("\nShutting down...")
+            httpd.shutdown()
 
 
 if __name__ == "__main__":
