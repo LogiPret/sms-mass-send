@@ -20,7 +20,7 @@ from pathlib import Path
 # ============================================
 # VERSION & AUTO-UPDATE CONFIGURATION
 # ============================================
-SCRIPT_VERSION = "1.0.2"
+SCRIPT_VERSION = "1.0.4"
 GIST_ID = "3e89759cac04be452c935c90b5733eea"  # Will be updated with real ID after creating gist
 GIST_RAW_BASE = "https://gist.githubusercontent.com/HugoOtth"
 VERSION_URL = f"{GIST_RAW_BASE}/{GIST_ID}/raw/version.json"
@@ -110,9 +110,62 @@ def download_update() -> bool:
         return False
 
 
+def find_system_python() -> str | None:
+    """Find a working Python 3 interpreter on the system"""
+    python_paths = [
+        '/usr/bin/python3',
+        '/usr/local/bin/python3',
+        '/opt/homebrew/bin/python3',
+        Path.home() / '.pyenv/shims/python3',
+    ]
+    
+    for path in python_paths:
+        path = Path(path)
+        if path.exists():
+            try:
+                result = subprocess.run(
+                    [str(path), '--version'],
+                    capture_output=True,
+                    timeout=5
+                )
+                if result.returncode == 0:
+                    return str(path)
+            except:
+                pass
+    
+    # Try 'which python3'
+    try:
+        result = subprocess.run(['which', 'python3'], capture_output=True, text=True, timeout=5)
+        if result.returncode == 0 and result.stdout.strip():
+            return result.stdout.strip()
+    except:
+        pass
+    
+    return None
+
+
+def is_bundled_app() -> bool:
+    """Check if we're running inside a PyInstaller bundle"""
+    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
+
+
 def run_cached_script():
     """Run the cached (updated) script instead of this one"""
-    if CACHED_SCRIPT.exists():
+    if not CACHED_SCRIPT.exists():
+        return
+    
+    # If we're in a bundled app, we need to find system Python
+    if is_bundled_app():
+        python_path = find_system_python()
+        if python_path:
+            print(f"Launching updated script with {python_path}: {CACHED_SCRIPT}")
+            os.execv(python_path, [python_path, str(CACHED_SCRIPT)] + sys.argv[1:])
+        else:
+            # No Python available - can't run updated script
+            print("No system Python found - cannot run updated script")
+            return
+    else:
+        # Running directly with Python, use same interpreter
         print(f"Launching updated script: {CACHED_SCRIPT}")
         os.execv(sys.executable, [sys.executable, str(CACHED_SCRIPT)] + sys.argv[1:])
 
@@ -126,7 +179,7 @@ def get_cached_version() -> str | None:
         content = CACHED_SCRIPT.read_text(encoding='utf-8')
         for line in content.split('\n'):
             if line.startswith('SCRIPT_VERSION'):
-                # Extract version from: SCRIPT_VERSION = "1.0.2"
+                # Extract version from: SCRIPT_VERSION = "1.0.4"
                 version = line.split('=')[1].strip().strip('"\'')
                 return version
     except:
@@ -1748,31 +1801,61 @@ HTML_PAGE = '''<!DOCTYPE html>
             const content = document.createElement('div');
             content.style.cssText = `
                 background: #2c2c2e; padding: 30px; border-radius: 16px;
-                max-width: 400px; text-align: center; color: #fff;
+                max-width: 450px; text-align: center; color: #fff;
             `;
             
             const title = translations[currentLang].updateAvailable || 'Mise à jour disponible';
-            const updateBtn = currentLang === 'fr' ? 'Mettre à jour' : 'Update';
-            const laterBtn = currentLang === 'fr' ? 'Plus tard' : 'Later';
             const current = currentLang === 'fr' ? 'Version actuelle' : 'Current version';
             const newVer = currentLang === 'fr' ? 'Nouvelle version' : 'New version';
             
-            content.innerHTML = \`
-                <h2 style="margin-bottom: 15px;">🔄 \${title}</h2>
-                <p style="color: #888; margin-bottom: 10px;">\${current}: \${data.currentVersion}</p>
-                <p style="color: #30d158; font-weight: bold; margin-bottom: 15px;">\${newVer}: \${data.latestVersion}</p>
-                \${data.changelog ? \`<p style="color: #aaa; font-size: 14px; margin-bottom: 20px;">\${data.changelog}</p>\` : ''}
-                <div style="display: flex; gap: 10px; justify-content: center;">
-                    <button onclick="applyUpdate()" style="
-                        background: #30d158; color: #000; border: none; padding: 12px 24px;
-                        border-radius: 8px; font-weight: bold; cursor: pointer;
-                    ">\${updateBtn}</button>
-                    <button onclick="closeUpdateModal()" style="
-                        background: #48484a; color: #fff; border: none; padding: 12px 24px;
-                        border-radius: 8px; cursor: pointer;
-                    ">\${laterBtn}</button>
-                </div>
-            \`;
+            // Check if we can auto-update or need manual download
+            if (data.canUpdate === false) {
+                // No Python available - show download instructions
+                const downloadMsg = currentLang === 'fr' 
+                    ? 'Python non installé. Téléchargez la nouvelle version manuellement.'
+                    : 'Python not installed. Please download the new version manually.';
+                const downloadBtn = currentLang === 'fr' ? 'Télécharger' : 'Download';
+                const laterBtn = currentLang === 'fr' ? 'Plus tard' : 'Later';
+                
+                content.innerHTML = `
+                    <h2 style="margin-bottom: 15px;">🔄 ${title}</h2>
+                    <p style="color: #888; margin-bottom: 10px;">${current}: ${data.currentVersion}</p>
+                    <p style="color: #30d158; font-weight: bold; margin-bottom: 15px;">${newVer}: ${data.latestVersion}</p>
+                    ${data.changelog ? `<p style="color: #aaa; font-size: 14px; margin-bottom: 15px;">${data.changelog}</p>` : ''}
+                    <p style="color: #ff9f0a; font-size: 13px; margin-bottom: 20px;">${downloadMsg}</p>
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button onclick="window.open('https://gist.github.com/HugoOtth/3e89759cac04be452c935c90b5733eea', '_blank'); closeUpdateModal();" style="
+                            background: #30d158; color: #000; border: none; padding: 12px 24px;
+                            border-radius: 8px; font-weight: bold; cursor: pointer;
+                        ">${downloadBtn}</button>
+                        <button onclick="closeUpdateModal()" style="
+                            background: #48484a; color: #fff; border: none; padding: 12px 24px;
+                            border-radius: 8px; cursor: pointer;
+                        ">${laterBtn}</button>
+                    </div>
+                `;
+            } else {
+                // Can auto-update
+                const updateBtn = currentLang === 'fr' ? 'Mettre à jour' : 'Update';
+                const laterBtn = currentLang === 'fr' ? 'Plus tard' : 'Later';
+                
+                content.innerHTML = `
+                    <h2 style="margin-bottom: 15px;">🔄 ${title}</h2>
+                    <p style="color: #888; margin-bottom: 10px;">${current}: ${data.currentVersion}</p>
+                    <p style="color: #30d158; font-weight: bold; margin-bottom: 15px;">${newVer}: ${data.latestVersion}</p>
+                    ${data.changelog ? `<p style="color: #aaa; font-size: 14px; margin-bottom: 20px;">${data.changelog}</p>` : ''}
+                    <div style="display: flex; gap: 10px; justify-content: center;">
+                        <button onclick="applyUpdate()" style="
+                            background: #30d158; color: #000; border: none; padding: 12px 24px;
+                            border-radius: 8px; font-weight: bold; cursor: pointer;
+                        ">${updateBtn}</button>
+                        <button onclick="closeUpdateModal()" style="
+                            background: #48484a; color: #fff; border: none; padding: 12px 24px;
+                            border-radius: 8px; cursor: pointer;
+                        ">${laterBtn}</button>
+                    </div>
+                `;
+            }
             
             modal.appendChild(content);
             document.body.appendChild(modal);
@@ -1786,10 +1869,10 @@ HTML_PAGE = '''<!DOCTYPE html>
         async function applyUpdate() {
             const modal = document.getElementById('updateModal');
             if (modal) {
-                modal.querySelector('div').innerHTML = \`
-                    <h2 style="margin-bottom: 15px;">⏳ \${currentLang === 'fr' ? 'Téléchargement...' : 'Downloading...'}</h2>
-                    <p style="color: #888;">\${currentLang === 'fr' ? 'Veuillez patienter' : 'Please wait'}</p>
-                \`;
+                modal.querySelector('div').innerHTML = `
+                    <h2 style="margin-bottom: 15px;">⏳ ${currentLang === 'fr' ? 'Téléchargement...' : 'Downloading...'}</h2>
+                    <p style="color: #888;">${currentLang === 'fr' ? 'Veuillez patienter' : 'Please wait'}</p>
+                `;
             }
             
             try {
@@ -1798,25 +1881,25 @@ HTML_PAGE = '''<!DOCTYPE html>
                 
                 if (data.success) {
                     if (modal) {
-                        modal.querySelector('div').innerHTML = \`
-                            <h2 style="margin-bottom: 15px;">✅ \${currentLang === 'fr' ? 'Mise à jour installée!' : 'Update installed!'}</h2>
-                            <p style="color: #888; margin-bottom: 20px;">\${currentLang === 'fr' ? 'Relancez l'"'"'application' : 'Please restart the application'}</p>
+                        modal.querySelector('div').innerHTML = `
+                            <h2 style="margin-bottom: 15px;">✅ ${currentLang === 'fr' ? 'Mise à jour installée!' : 'Update installed!'}</h2>
+                            <p style="color: #888; margin-bottom: 20px;">${currentLang === 'fr' ? 'Relancez l'"'"'application' : 'Please restart the application'}</p>
                             <button onclick="quitApp()" style="
                                 background: #30d158; color: #000; border: none; padding: 12px 24px;
                                 border-radius: 8px; font-weight: bold; cursor: pointer;
-                            ">\${currentLang === 'fr' ? 'Quitter' : 'Quit'}</button>
-                        \`;
+                            ">${currentLang === 'fr' ? 'Quitter' : 'Quit'}</button>
+                        `;
                     }
                 } else {
                     if (modal) {
-                        modal.querySelector('div').innerHTML = \`
-                            <h2 style="margin-bottom: 15px;">❌ \${currentLang === 'fr' ? 'Erreur' : 'Error'}</h2>
-                            <p style="color: #ff453a;">\${data.error || 'Unknown error'}</p>
+                        modal.querySelector('div').innerHTML = `
+                            <h2 style="margin-bottom: 15px;">❌ ${currentLang === 'fr' ? 'Erreur' : 'Error'}</h2>
+                            <p style="color: #ff453a;">${data.error || 'Unknown error'}</p>
                             <button onclick="closeUpdateModal()" style="
                                 background: #48484a; color: #fff; border: none; padding: 12px 24px;
                                 border-radius: 8px; cursor: pointer; margin-top: 15px;
                             ">OK</button>
-                        \`;
+                        `;
                     }
                 }
             } catch(e) {
@@ -1855,8 +1938,18 @@ class SMSHandler(http.server.SimpleHTTPRequestHandler):
             self.end_headers()
             
             if SMSHandler.pending_update:
+                # Check if we can actually apply updates (need Python for bundled app)
+                can_update = True
+                update_method = 'script'  # Can update the script file
+                
+                if is_bundled_app() and not find_system_python():
+                    can_update = False
+                    update_method = 'download'  # Must download new app
+                
                 response = {
                     'hasUpdate': True,
+                    'canUpdate': can_update,
+                    'updateMethod': update_method,
                     'currentVersion': SMSHandler.current_version,
                     'latestVersion': SMSHandler.pending_update.get('version', '?'),
                     'changelog': SMSHandler.pending_update.get('changelog', '')

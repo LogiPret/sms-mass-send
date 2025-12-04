@@ -1,6 +1,7 @@
 #!/bin/bash
 # Publish Mac SMS Campaign to public Gist
 # Creates/updates a public Gist for auto-updates
+# Only updates gist/version if mac_app files have changed
 
 # Configuration
 GIST_ID_FILE="$(dirname "$0")/.mac_gist_id"
@@ -30,6 +31,39 @@ if ! gh auth status &>/dev/null; then
     echo -e "${YELLOW}📱 First time setup - logging into GitHub...${NC}"
     gh auth login
 fi
+
+# Check if mac_app files have changed (staged or unstaged)
+MAC_CHANGED=false
+if git diff --name-only HEAD 2>/dev/null | grep -q "mac_app/"; then
+    MAC_CHANGED=true
+fi
+if git diff --cached --name-only 2>/dev/null | grep -q "mac_app/"; then
+    MAC_CHANGED=true
+fi
+# Also check untracked/modified files
+if git status --porcelain 2>/dev/null | grep -q "mac_app/"; then
+    MAC_CHANGED=true
+fi
+
+if [ "$MAC_CHANGED" = false ]; then
+    echo -e "${BLUE}ℹ️  No changes to mac_app/ files${NC}"
+    echo -e "${BLUE}   Skipping version bump and gist update.${NC}"
+    echo ""
+    
+    # Still offer to push other changes
+    read -p "Push other changes to repo? (y/n): " PUSH_OTHER
+    if [ "$PUSH_OTHER" = "y" ]; then
+        cd ..
+        git add -A
+        read -p "Commit message: " COMMIT_MSG
+        git commit -m "$COMMIT_MSG"
+        git push -u origin main
+        echo -e "${GREEN}✅ Pushed to repo (no gist update)${NC}"
+    fi
+    exit 0
+fi
+
+echo -e "${YELLOW}📱 Mac app files changed - updating version and gist${NC}"
 
 # Read current build number or start at 0
 if [ -f "$BUILD_FILE" ]; then
