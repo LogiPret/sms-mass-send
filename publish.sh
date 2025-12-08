@@ -168,3 +168,20 @@ echo ""
 echo "Update URLs (public):"
 echo "  Script:  https://gist.githubusercontent.com/HugoOtth/$GIST_ID/raw/sms_automatisation.js"
 echo "  Version: https://gist.githubusercontent.com/HugoOtth/$GIST_ID/raw/version.json"
+
+# Check if Mac app also needs publishing
+MAC_GIST_ID_FILE="mac_app/.mac_gist_id"
+if [ -f "$MAC_GIST_ID_FILE" ]; then
+    MAC_CHANGED=false
+    if git diff --name-only HEAD~1 2>/dev/null | grep -q "mac_app/sms_campaign.py"; then
+        MAC_CHANGED=true
+    fi
+    
+    if [ "$MAC_CHANGED" = true ]; then
+        echo ""
+        echo -e "${YELLOW}Mac app also changed - publishing to Mac gist...${NC}"
+        cd mac_app
+        ./publish_mac.sh
+        cd ..
+    fi
+fi

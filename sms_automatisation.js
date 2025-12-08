@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.28";
+const SCRIPT_VERSION = "1.1.29";
 const SCRIPT_NAME = "sms_automatisation"; // Legacy - now uses Script.name() for actual name
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -184,15 +184,15 @@ const DEBUG_MODE = false;
 
 const CONFIG = {
     // Colonne téléphone générique (format multi ou simple)
-    phoneColumns: ['phone', 'telephone', 'tel', 'numéro', 'numero', 'b2_telephone'],
+    phoneColumns: ['phone', 'telephone', 'tel', 'numéro', 'numero', 'b2_telephone', 'b1_telephone'],
     
     // Colonnes téléphone séparées par type (priorité: mobile > work > home)
     mobileColumns: ['mobile', 'cell', 'cellulaire', 'cellular', 'cell_phone', 'mobile_phone'],
     workColumns: ['work', 'travail', 'bureau', 'office', 'work_phone', 'business', 'professionnel'],
     homeColumns: ['home', 'maison', 'domicile', 'residence', 'home_phone', 'personnel'],
     
-    firstNameColumns: ['prenom', 'prénom', 'firstname', 'first name', 'first', 'given name', 'b2_prenom', 'b2_prénom'],
-    lastNameColumns: ['nom', 'lastname', 'last name', 'last', 'family name', 'surname', 'b2_nom', 'famille'],
+    firstNameColumns: ['prenom', 'prénom', 'firstname', 'first name', 'first', 'given name', 'b2_prenom', 'b2_prénom', 'b1_prenom', 'b1_prénom'],
+    lastNameColumns: ['nom', 'lastname', 'last name', 'last', 'family name', 'surname', 'b2_nom', 'famille', 'b1_nom'],
     
     // Variables dans le message
     firstNameVar: '**PRENOM**',
@@ -721,8 +721,16 @@ function detectColumns(headers) {
         if (columnMap.phone === -1 && columnMap.phoneMobile !== i && columnMap.phoneWork !== i && columnMap.phoneHome !== i) {
             for (let name of CONFIG.phoneColumns) {
                 let nameNorm = normalizeText(name);
-                if (header.includes(name) || headerNormalized.includes(nameNorm)) {
+                // Vérifier correspondance exacte ou contient (ignore case et accents)
+                if (header === name || 
+                    headerNormalized === nameNorm ||
+                    header.includes(name) || 
+                    headerNormalized.includes(nameNorm) ||
+                    // Aussi vérifier si le header se termine par ces mots (ex: "B1_Phone")
+                    header.endsWith(name) ||
+                    headerNormalized.endsWith(nameNorm)) {
                     columnMap.phone = i;
+                    console.log(`✓ Téléphone trouvé: colonne[${i}] = "${headers[i]}"`);
                     break;
                 }
             }
@@ -737,14 +745,17 @@ function detectColumns(headers) {
             // Patterns spécifiques pour prénom
             if (headerNormalized.includes('prenom') || 
                 headerNormalized.includes('first') ||
-                headerNormalized.includes('given')) {
+                headerNormalized.includes('given') ||
+                header.match(/\bprenom\b/i) ||
+                header.match(/\bfirst\b/i)) {
                 isFirstName = true;
             }
             
             // Exclure si c'est clairement un nom de famille
             if (headerNormalized.includes('famille') || 
                 headerNormalized.includes('family') ||
-                headerNormalized.includes('nom_de_famille')) {
+                headerNormalized.includes('nom_de_famille') ||
+                header.match(/nom.*famille/i)) {
                 isFirstName = false;
             }
             
