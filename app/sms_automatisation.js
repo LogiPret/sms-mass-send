@@ -5,7 +5,7 @@
 // ============================================
 // AUTO-UPDATE CONFIGURATION
 // ============================================
-const SCRIPT_VERSION = "1.1.29";
+const SCRIPT_VERSION = "1.1.30";
 const SCRIPT_NAME = "sms_automatisation"; // Legacy - now uses Script.name() for actual name
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -597,13 +597,17 @@ function parseCSV(content) {
     console.log(`Séparateur détecté: ${sepInfo.name} (${sepInfo.count} occurrences)`);
     
     // Handle all line endings: \r\n (Windows), \n (Unix/Mac), \r (old Mac CSV)
-    let lines = content.split(/\r\n|\n|\r/).filter(line => line.trim().length > 0);
+    let lines = content.split(/\r\n|\n|\r/).filter(line => {
+        // Ignorer les lignes vides ou qui ne contiennent que des séparateurs
+        let cleaned = line.replace(new RegExp(`\\${separator}`, 'g'), '').trim();
+        return cleaned.length > 0;
+    });
     
     if (lines.length === 0) {
         return { headers: [], rows: [], columnMap: {}, separator: sepInfo.name };
     }
     
-    // Parser l'en-tête
+    // Parser l'en-tête (première ligne non vide)
     let headers = parseCSVLine(lines[0], separator);
     
     // Parser les lignes de données
