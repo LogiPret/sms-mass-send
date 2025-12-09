@@ -1,0 +1,17 @@
+;;;;;;;;;;;;;;;;;;;;
+;identifier_1;identifier_2;ID Client 1;ID Client 2;M_1Code_de_demande;M1État;M_1Date_d'entrée;M_1Date_de_clôture;M_1Date_d'échéance;M_1Type_de_demande;B1_Salutation;B1_Prénom_de_l'emprunteur;B1_Nom_de_famille_de_l'emprunteur;B1_Date_de_naissance_de_l'emprunteur;B1_Adresse_électronique_de_l'emprunteur;B1_Langue_préférée;B1_Profession_de_l'emprunteur;Phone;A1_Prénom_de_l'agent;A1_Nom_de_famille_de_l'agent
+;CL|151798|124206;;124206;;PLPRv317;Terminée;2024-11-13;2024-01-22;2029-01-22;;M.;Sebastien;Jacques;1973-12-11;sebjacques@live.ca;Français;conseiller en scurit financire;;Francis;Marois
+;CL|151798|183503;;183503;;PLPR-151182;Terminée;2024-03-12;2024-05-31;2029-05-31;Approbation;M.;Sylvain;Beaulieu;1983-01-08;ticeagle@outlook.com;Français;Directeur service;4383920554;Francis;Marois
+;CL|151798|183923;;183923;;PLPRv2806;Terminée;2025-03-05;2025-10-16;2028-10-16;;M.;Julien;Madore;1971-08-24;julienmadore@videotron.ca;Français;manoeuvre;5149784464;Francis;Marois
+;CL|151798|185444;;185444;;PLPRv364;Terminée;2024-10-21;2025-04-01;2030-03-16;;Mme;Marie-Helene;Juneau-hotte;1979-03-25;mhjuneau@hotmail.com;Français;Vice presidente marketing communication;5149800698;Francis;Marois
+;CL|151798|202139;CL|151798|387402072;202139;387402072;PLPRv397;Terminée;2024-12-04;2025-01-10;2029-01-10;;Mme;Noémie;Gauthier;;gauthier.courtier@gmail.com;Français;courtière;4508486618;Francis;Marois
+;CL|151798|203099;;203099;;PLPRv1359;Terminée;2025-01-19;2025-06-10;2029-06-10;;M.;Francis;Grondin;1993-11-10;grondinfrancis@hotmail.com;Français;;5146389348;Francis;Marois
+;CL|151798|206948;;206948;;FILE-196799;Terminée;2025-01-29;2025-02-28;2028-02-28;;M.;Vincent;Gilbert;1994-04-23;entreprise.gilbert60@gmail.com;Français;Pompier permanent;5145036484;Francis;Marois
+;CL|151798|228119;CL|151798|228120;228119;228120;FILE-194169;Terminée;2025-01-20;2025-02-28;2028-02-28;;;Gérald;Varsovie;1987-01-07;gerald.varsovie@gmail.com;Français;administrateur;5147751878;Francis;Marois
+;CL|151798|236424;;236424;;FILE-242808;Terminée;2025-08-05;2025-10-01;2029-10-01;;M.;Etienne;Laurence;1993-05-30;etienne.laurence@hotmail.com;Français;Agent au transport de valeur;5149723093;Francis;Marois
+;CL|151798|262288;CL|151798|262287;262288;262287;PLPRv393;Terminée;2024-11-27;2025-02-08;2030-02-08;;M.;Mathieu;Pelletier;1986-10-12;mathpell@gmail.com;Français;propriétaire;4388845334;Francis;Marois
+;CL|151798|272414;CL|151798|332525;272414;332525;PLPRv793;Terminée;2025-02-03;2025-06-12;2029-06-12;;M.;Emmanuel;Pilon Charron;1995-05-13;manu19pilon@hotmail.com;Français;infirmier;4383996617;Francis;Marois
+;CL|151798|292640;CL|151798|292691;292640;292691;PLPR-144957;Terminée;2023-10-24;2024-02-28;2029-02-28;Approbation;M.;Joe;Milan;1978-10-20;joey_milane@hotmail.com;Français;directeur des ventes;5145163225;Francis;Marois
+;CL|151798|303775;CL|151798|353662;303775;353662;PLPR-146253;Terminée;2023-11-26;2024-05-28;2027-08-28;Approbation;Mme;Anick;Lepage;1985-06-25;anicklepage@hotmail.com;Français;Specialistes produits;4504191908;Francis;Marois
+;CL|151798|317327;;317327;;PLPR-128470;Terminée;2022-10-04;2022-10-27;2027-10-27;Approbation;Mme;Manon;Vezina;1980-10-21;m.vezina21@gmail.com;Français;chauffeuse;8193253216;Francis;Marois
+;CL|151798|317845;CL|151798|317846;317845;317846;PLPR-128687;Terminée;2022-10-11;2022-12-26;2027-12-26;Approbation;M.;Daniel;Desbois;1958-06-04;bluesy40@hotmail.com;Français;agent de bureau;5143713996;Francis;Marois

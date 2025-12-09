@@ -1,19 +1,13 @@
-// SMS Automatisation - Scriptable Script
+// SMS Automatisation - Logipret
 // Version 1.0
 // Pour iPhone - Envoi de SMS en masse depuis un CSV
 
-// ============================================
-// AUTO-UPDATE CONFIGURATION
-// ============================================
-const SCRIPT_VERSION = "1.1.30";
-const SCRIPT_NAME = "sms_automatisation"; // Legacy - now uses Script.name() for actual name
+const SCRIPT_VERSION = "1.1.31";
+const SCRIPT_NAME = "sms_automatisation";
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
 const VERSION_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/version.json";
 
-// ============================================
-// AUTO-UPDATE FUNCTION
-// ============================================
 
 function isNewerVersion(latest, current) {
     const latestParts = latest.split('.').map(n => parseInt(n) || 0);
@@ -45,9 +39,7 @@ async function checkForUpdates(silent = true) {
         const latestVersion = versionInfo.version;
         const shouldUpdate = isNewerVersion(latestVersion, currentVersion);
         
-        // Compare versions properly
         if (shouldUpdate) {
-            // New version available!
             let alert = new Alert();
             alert.title = "🔄 Mise à jour disponible!";
             alert.message = `Version ${latestVersion} disponible (vous avez ${currentVersion})\n\n${versionInfo.changelog || ""}`;
@@ -57,7 +49,6 @@ async function checkForUpdates(silent = true) {
             let choice = await alert.present();
             
             if (choice === 0) {
-                // Download and install update
                 await installUpdate();
                 return true;
             }
@@ -69,7 +60,6 @@ async function checkForUpdates(silent = true) {
             await alert.present();
         }
     } catch (error) {
-        // Show user-friendly error (not technical details)
         if (!silent) {
             let errAlert = new Alert();
             errAlert.title = "❌ Erreur de mise à jour";
@@ -96,34 +86,24 @@ async function installUpdate() {
             throw new Error("Downloaded script is empty or too short");
         }
         
-        // BULLETPROOF: Use Script.name() to get the ACTUAL script name as shown in Scriptable
-        // This works regardless of what the user named their script
         let actualScriptName = Script.name();
         
-        // Scriptable stores scripts in iCloud if enabled, otherwise local
         let fm;
         let scriptPath;
         let success = false;
         let errorDetails = [];
         
-        // Try iCloud first (most common for Scriptable users)
         try {
             fm = FileManager.iCloud();
-            // Scriptable stores scripts in: iCloud Drive/Scriptable/
             scriptPath = fm.joinPath(fm.documentsDirectory(), actualScriptName + ".js");
             
-            // Check if file exists OR if we can write to this location
             if (fm.fileExists(scriptPath)) {
-                // File exists, update it
                 if (fm.isFileDownloaded(scriptPath) === false) {
-                    // Need to download from iCloud first
                     await fm.downloadFileFromiCloud(scriptPath);
                 }
                 fm.writeString(scriptPath, newScript);
                 success = true;
             } else {
-                // File doesn't exist at expected path - try to create it
-                // This handles edge cases where script was run from share sheet etc.
                 fm.writeString(scriptPath, newScript);
                 success = true;
             }
@@ -131,7 +111,6 @@ async function installUpdate() {
             errorDetails.push("iCloud: " + String(e).substring(0, 50));
         }
         
-        // Try local storage if iCloud didn't work
         if (!success) {
             try {
                 fm = FileManager.local();
@@ -141,7 +120,6 @@ async function installUpdate() {
                     fm.writeString(scriptPath, newScript);
                     success = true;
                 } else {
-                    // Try to create it
                     fm.writeString(scriptPath, newScript);
                     success = true;
                 }
@@ -150,7 +128,6 @@ async function installUpdate() {
             }
         }
         
-        // If still no success, show detailed error
         if (!success) {
             let alert = new Alert();
             alert.title = "❌ Erreur de mise à jour";
@@ -177,16 +154,11 @@ async function installUpdate() {
     }
 }
 
-// ============================================
-// CONFIGURATION
-// ============================================
 const DEBUG_MODE = false;
 
 const CONFIG = {
-    // Colonne téléphone générique (format multi ou simple)
     phoneColumns: ['phone', 'telephone', 'tel', 'numéro', 'numero', 'b2_telephone', 'b1_telephone'],
     
-    // Colonnes téléphone séparées par type (priorité: mobile > work > home)
     mobileColumns: ['mobile', 'cell', 'cellulaire', 'cellular', 'cell_phone', 'mobile_phone'],
     workColumns: ['work', 'travail', 'bureau', 'office', 'work_phone', 'business', 'professionnel'],
     homeColumns: ['home', 'maison', 'domicile', 'residence', 'home_phone', 'personnel'],
@@ -194,35 +166,25 @@ const CONFIG = {
     firstNameColumns: ['prenom', 'prénom', 'firstname', 'first name', 'first', 'given name', 'b2_prenom', 'b2_prénom', 'b1_prenom', 'b1_prénom'],
     lastNameColumns: ['nom', 'lastname', 'last name', 'last', 'family name', 'surname', 'b2_nom', 'famille', 'b1_nom'],
     
-    // Variables dans le message
     firstNameVar: '**PRENOM**',
     lastNameVar: '**NOM**',
     
-    // Priorité des types de téléphone pour format multi (premier = priorité haute)
     phonePriority: ['mobile', 'cell', 'cellulaire', 'work', 'travail', 'bureau', 'home', 'maison', 'domicile']
 };
 
-// ============================================
-// FRENCH CHARACTER FIXES
-// ============================================
-// Fixes corrupted French accents from latin-1 encoding issues
-// The � character appears when encoding is mismatched
 
 function fixFrenchAccents(text) {
     if (!text || typeof text !== 'string') return text;
     
-    // Common French name patterns with é (most common)
     const patternsE = [
-        // First names starting with É
         /\bEmilie\b/gi,
         /\bEric\b/gi,
         /\bEtienne\b/gi,
         /\bEliane\b/gi,
         /\bElise\b/gi,
-        // Names with é in middle
         /Stephanie/gi,
         /Stephane/gi,
-        /Genevieve/gi,  // has both é and è, we'll fix è separately
+        /Genevieve/gi,
         /Frederic/gi,
         /Frederique/gi,
         /Frederike/gi,
@@ -243,7 +205,6 @@ function fixFrenchAccents(text) {
         /Gerard/gi,
         /Desire/gi,
         /Remi/gi,
-        // Last names
         /Bedard/gi,
         /Bechard/gi,
         /Berube/gi,
@@ -265,19 +226,16 @@ function fixFrenchAccents(text) {
         /Seguin/gi,
         /Senecal/gi,
         /Gregoire/gi,
-        /Cote\b/gi,  // word boundary to avoid matching inside other words
+        /Cote\b/gi,
         /Crete/gi,
     ];
     
-    // Known full name replacements (case insensitive matching, preserve case in output)
     const knownReplacements = {
-        // É at start
         'emilie': 'Émilie',
         'eric': 'Éric',
         'etienne': 'Étienne',
         'eliane': 'Éliane',
         'elise': 'Élise',
-        // é in middle
         'stephanie': 'Stéphanie',
         'stephane': 'Stéphane',
         'frederic': 'Frédéric',
@@ -300,12 +258,11 @@ function fixFrenchAccents(text) {
         'genevieve': 'Geneviève',
         'beatrice': 'Béatrice',
         'benedicte': 'Bénédicte',
-        // Last names
         'bedard': 'Bédard',
         'bechard': 'Béchard',
         'berube': 'Bérubé',
         'bezeau': 'Bézeau',
-        'beaulieu': 'Beaulieu',  // no accent
+        'beaulieu': 'Beaulieu',
         'levesque': 'Lévesque',
         'leveille': 'Léveillé',
         'legare': 'Légaré',
@@ -326,43 +283,31 @@ function fixFrenchAccents(text) {
         'desrosiers': 'Desrosiers',
     };
     
-    // First, try to fix the � character by detecting patterns
-    // If text contains �, we need to figure out what it should be
     if (text.includes('�')) {
-        // Try to match against known patterns
-        let cleanText = text.replace(/�/g, '');  // Remove corrupted chars
+        let cleanText = text.replace(/�/g, '');
         let lowerClean = cleanText.toLowerCase();
         
-        // Check for known names
         for (let [plain, accented] of Object.entries(knownReplacements)) {
-            // Check if the clean text matches the plain version
             if (lowerClean === plain || lowerClean.includes(plain)) {
-                // Replace in the original text
                 let regex = new RegExp(text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/�/g, '.'), 'i');
                 return text.replace(/�./g, (match, offset) => {
-                    // Find position in accented version
                     let pos = text.substring(0, offset).replace(/�/g, '').length;
                     return accented.charAt(pos) || match;
                 });
             }
         }
         
-        // Specific pattern replacements for common corruptions
-        // St�phanie -> Stéphanie, St�phan -> Stéphan
         text = text.replace(/St�phan/gi, 'Stéphan');
         text = text.replace(/St�ph/gi, 'Stéph');
         
-        // �milie, �ric, �tienne -> É...
         text = text.replace(/^�milie$/i, 'Émilie');
         text = text.replace(/^�ric$/i, 'Éric');
         text = text.replace(/^�tienne$/i, 'Étienne');
         text = text.replace(/^�liane$/i, 'Éliane');
         text = text.replace(/^�lise$/i, 'Élise');
         
-        // B�dard -> Bédard
         text = text.replace(/B�dard/gi, 'Bédard');
         
-        // Larosili�re -> Larosilière
         text = text.replace(/li�re\b/gi, 'lière');
         text = text.replace(/ti�re\b/gi, 'tière');
         text = text.replace(/ni�re\b/gi, 'nière');
@@ -375,12 +320,10 @@ function fixFrenchAccents(text) {
         text = text.replace(/si�re\b/gi, 'sière');
         text = text.replace(/gi�re\b/gi, 'gière');
         
-        // Fran�ais -> Français, Fran�ois -> François
         text = text.replace(/Fran�ais/gi, 'Français');
         text = text.replace(/Fran�ois/gi, 'François');
         text = text.replace(/Fran�oise/gi, 'Françoise');
         
-        // Ren�, Andr�, etc. (é at end after consonant)
         text = text.replace(/n�\b/g, 'né');
         text = text.replace(/r�\b/g, 'ré');
         text = text.replace(/l�\b/g, 'lé');
@@ -389,7 +332,6 @@ function fixFrenchAccents(text) {
         text = text.replace(/s�\b/g, 'sé');
         text = text.replace(/m�\b/g, 'mé');
         
-        // G�rard, S�bastien, C�dric, R�mi, etc. (é after consonant before vowel)
         text = text.replace(/G�rard/gi, 'Gérard');
         text = text.replace(/S�bastien/gi, 'Sébastien');
         text = text.replace(/C�dric/gi, 'Cédric');
@@ -408,7 +350,6 @@ function fixFrenchAccents(text) {
         text = text.replace(/Fr�d�ric/gi, 'Frédéric');
         text = text.replace(/Fr�d�rique/gi, 'Frédérique');
         
-        // L�vesque, L�ger, L�pine, M�nard, S�guin, etc.
         text = text.replace(/L�vesque/gi, 'Lévesque');
         text = text.replace(/L�ger/gi, 'Léger');
         text = text.replace(/L�pine/gi, 'Lépine');
@@ -424,10 +365,7 @@ function fixFrenchAccents(text) {
         text = text.replace(/T�tu/gi, 'Têtu');
         text = text.replace(/Cr�te/gi, 'Crête');
         
-        // If still has �, try generic replacements based on position
-        // Most remaining cases: � before consonant = é, � before 're' = è
         if (text.includes('�')) {
-            // è patterns (before re, ve, le, ne at end of word)
             text = text.replace(/�ve\b/gi, 'ève');
             text = text.replace(/�le\b/gi, 'èle');
             text = text.replace(/�ne\b/gi, 'ène');
@@ -438,9 +376,8 @@ function fixFrenchAccents(text) {
             text = text.replace(/�de\b/gi, 'ède');
             text = text.replace(/�ge\b/gi, 'ège');
             text = text.replace(/�pe\b/gi, 'èpe');
-            text = text.replace(/�re\b/gi, 'ère');  // Père, Mère
+            text = text.replace(/�re\b/gi, 'ère');
             
-            // Default: remaining � is probably é
             text = text.replace(/�/g, 'é');
         }
     }
@@ -448,20 +385,14 @@ function fixFrenchAccents(text) {
     return text;
 }
 
-// ============================================
-// MAIN
-// ============================================
 async function main() {
     try {
-        // Check for updates silently at launch
         let updated = await checkForUpdates(true);
-        if (updated) return; // Script was updated, exit
+        if (updated) return;
         
-        // Étape 1: Sélection du fichier CSV (pas de welcome screen)
         let csvContent = await selectCSVFile();
         if (!csvContent) return;
         
-        // Étape 2: Parser le CSV
         let { headers, rows, columnMap, separator } = parseCSV(csvContent);
         
         if (rows.length === 0) {
@@ -469,23 +400,18 @@ async function main() {
             return;
         }
         
-        // Vérifier colonnes essentielles (silencieux si OK)
-        // On accepte soit une colonne téléphone générique, soit des colonnes séparées mobile/work/home
         let hasPhoneColumn = columnMap.phone >= 0 || columnMap.phoneMobile >= 0 || columnMap.phoneWork >= 0 || columnMap.phoneHome >= 0;
         if (!hasPhoneColumn) {
             await showError("Colonne téléphone non trouvée.\nUtilise: phone, telephone, mobile, work, home, etc.");
             return;
         }
         
-        // Étape 3: Saisie du message
         let messageTemplate = await getMessageTemplate();
         if (!messageTemplate) return;
         
-        // Étape 4: Préparer les contacts
         let { validContacts, skippedContacts } = prepareContacts(rows, headers, columnMap);
         
         if (validContacts.length === 0) {
-            // Afficher plus de détails pour debug
             let debugInfo = `Colonnes détectées:\n`;
             debugInfo += `• Prénom: ${columnMap.firstName >= 0 ? headers[columnMap.firstName] : 'NON TROUVÉ'}\n`;
             debugInfo += `• Nom: ${columnMap.lastName >= 0 ? headers[columnMap.lastName] : 'NON TROUVÉ'}\n`;
@@ -496,7 +422,6 @@ async function main() {
             debugInfo += `Séparateur: ${separator}\n`;
             debugInfo += `Lignes: ${rows.length}\n`;
             debugInfo += `Headers: ${headers.length}\n\n`;
-            // Afficher tous les headers
             debugInfo += `Tous les headers:\n`;
             for (let i = 0; i < Math.min(8, headers.length); i++) {
                 debugInfo += `[${i}] ${headers[i]}\n`;
@@ -512,20 +437,16 @@ async function main() {
             return;
         }
         
-        // MODE DEBUG : Afficher le rapport sans envoyer
         if (DEBUG_MODE) {
             await showDebugReport(validContacts, skippedContacts, messageTemplate, separator);
             return;
         }
         
-        // Étape 5: Toujours afficher le rapport de preview pour vérification
         let shouldContinue = await showPreviewReport(validContacts, skippedContacts, messageTemplate, separator);
         if (!shouldContinue) return;
         
-        // Étape 6: Envoyer les messages (mode rapide)
         let result = await sendMessagesFast(validContacts, messageTemplate);
         
-        // Étape 7: Rapport final
         if (result.stopped) {
             let alert = new Alert();
             alert.title = "🛑 Arrêté";
@@ -541,9 +462,6 @@ async function main() {
     }
 }
 
-// ============================================
-// FONCTIONS DE SÉLECTION FICHIER
-// ============================================
 async function selectCSVFile() {
     try {
         let files = await DocumentPicker.open(["public.comma-separated-values-text", "public.plain-text"]);
@@ -552,7 +470,6 @@ async function selectCSVFile() {
         let filePath = files[0];
         let fm = FileManager.local();
         
-        // Lire le contenu du fichier
         let content = fm.readString(filePath);
         
         if (!content || content.trim().length === 0) {
@@ -570,23 +487,16 @@ async function selectCSVFile() {
     }
 }
 
-// ============================================
-// FONCTIONS DE PARSING CSV
-// ============================================
 function detectSeparator(content) {
-    // Prendre les premières lignes pour détecter le séparateur
-    // Handle all line endings: \r\n (Windows), \n (Unix/Mac), \r (old Mac)
     let firstLines = content.split(/\r\n|\n|\r/).slice(0, 5).join('\n');
       
     
-    // Compter les occurrences de chaque séparateur potentiel
     let separators = [
         { char: ',', name: 'virgule', count: (firstLines.match(/,/g) || []).length },
         { char: ';', name: 'point-virgule', count: (firstLines.match(/;/g) || []).length },
         { char: '\t', name: 'tabulation', count: (firstLines.match(/\t/g) || []).length }
     ];
     
-    // Retourner celui avec le plus d'occurrences
     separators.sort((a, b) => b.count - a.count);
     return separators[0];
 }
@@ -596,9 +506,7 @@ function parseCSV(content) {
     let separator = sepInfo.char;
     console.log(`Séparateur détecté: ${sepInfo.name} (${sepInfo.count} occurrences)`);
     
-    // Handle all line endings: \r\n (Windows), \n (Unix/Mac), \r (old Mac CSV)
     let lines = content.split(/\r\n|\n|\r/).filter(line => {
-        // Ignorer les lignes vides ou qui ne contiennent que des séparateurs
         let cleaned = line.replace(new RegExp(`\\${separator}`, 'g'), '').trim();
         return cleaned.length > 0;
     });
@@ -607,10 +515,8 @@ function parseCSV(content) {
         return { headers: [], rows: [], columnMap: {}, separator: sepInfo.name };
     }
     
-    // Parser l'en-tête (première ligne non vide)
     let headers = parseCSVLine(lines[0], separator);
     
-    // Parser les lignes de données
     let rows = [];
     for (let i = 1; i < lines.length; i++) {
         let values = parseCSVLine(lines[i], separator);
@@ -621,7 +527,6 @@ function parseCSV(content) {
         });
     }
     
-    // Détecter les colonnes
     let columnMap = detectColumns(headers);
     
     return { headers, rows, columnMap, separator: sepInfo.name };
@@ -638,11 +543,9 @@ function parseCSVLine(line, separator = ',') {
         
         if (char === '"') {
             if (inQuotes && nextChar === '"') {
-                // Guillemet échappé
                 current += '"';
                 i++;
             } else {
-                // Toggle état guillemet
                 inQuotes = !inQuotes;
             }
         } else if (char === separator && !inQuotes) {
@@ -658,22 +561,21 @@ function parseCSVLine(line, separator = ',') {
 }
 
 function normalizeText(text) {
-    // Supprimer les accents et caractères spéciaux, normaliser
     if (!text) return '';
     return text
         .normalize('NFD')
-        .replace(/[\u0300-\u036f]/g, '')  // Remove accents
-        .replace(/[�]/g, 'e')              // Handle broken encoding
+        .replace(/[\u0300-\u036f]/g, '')
+        .replace(/[�]/g, 'e')
         .toLowerCase()
         .replace(/[^a-z0-9]/g, '_');
 }
 
 function detectColumns(headers) {
     let columnMap = {
-        phone: -1,        // Colonne téléphone générique (format multi)
-        phoneMobile: -1,  // Colonne mobile séparée
-        phoneWork: -1,    // Colonne travail séparée
-        phoneHome: -1,    // Colonne maison séparée
+        phone: -1,
+        phoneMobile: -1,
+        phoneWork: -1, 
+        phoneHome: -1,
         firstName: -1,
         lastName: -1
     };
@@ -682,10 +584,8 @@ function detectColumns(headers) {
         let header = headers[i].toLowerCase().trim();
         let headerNormalized = normalizeText(headers[i]);
         
-        // Debug: afficher dans console
         console.log(`Header[${i}]: "${header}" -> normalized: "${headerNormalized}"`);
         
-        // Détecter colonne mobile
         if (columnMap.phoneMobile === -1) {
             for (let name of CONFIG.mobileColumns) {
                 let nameNorm = normalizeText(name);
@@ -697,7 +597,6 @@ function detectColumns(headers) {
             }
         }
         
-        // Détecter colonne travail
         if (columnMap.phoneWork === -1) {
             for (let name of CONFIG.workColumns) {
                 let nameNorm = normalizeText(name);
@@ -709,7 +608,6 @@ function detectColumns(headers) {
             }
         }
         
-        // Détecter colonne maison
         if (columnMap.phoneHome === -1) {
             for (let name of CONFIG.homeColumns) {
                 let nameNorm = normalizeText(name);
@@ -721,16 +619,13 @@ function detectColumns(headers) {
             }
         }
         
-        // Détecter téléphone générique (si pas déjà une colonne spécifique)
         if (columnMap.phone === -1 && columnMap.phoneMobile !== i && columnMap.phoneWork !== i && columnMap.phoneHome !== i) {
             for (let name of CONFIG.phoneColumns) {
                 let nameNorm = normalizeText(name);
-                // Vérifier correspondance exacte ou contient (ignore case et accents)
                 if (header === name || 
                     headerNormalized === nameNorm ||
                     header.includes(name) || 
                     headerNormalized.includes(nameNorm) ||
-                    // Aussi vérifier si le header se termine par ces mots (ex: "B1_Phone")
                     header.endsWith(name) ||
                     headerNormalized.endsWith(nameNorm)) {
                     columnMap.phone = i;
@@ -740,13 +635,9 @@ function detectColumns(headers) {
             }
         }
         
-        // Détecter prénom - DOIT être vérifié AVANT nom car "prénom" contient "nom"
-        // Chercher spécifiquement "prenom" ou "first" mais PAS si c'est "nom_de_famille"
         if (columnMap.firstName === -1) {
-            // Vérifier si c'est un prénom (et pas un nom de famille)
             let isFirstName = false;
             
-            // Patterns spécifiques pour prénom
             if (headerNormalized.includes('prenom') || 
                 headerNormalized.includes('first') ||
                 headerNormalized.includes('given') ||
@@ -755,7 +646,6 @@ function detectColumns(headers) {
                 isFirstName = true;
             }
             
-            // Exclure si c'est clairement un nom de famille
             if (headerNormalized.includes('famille') || 
                 headerNormalized.includes('family') ||
                 headerNormalized.includes('nom_de_famille') ||
@@ -768,11 +658,9 @@ function detectColumns(headers) {
             }
         }
         
-        // Détecter nom de famille
         if (columnMap.lastName === -1) {
             let isLastName = false;
             
-            // Patterns spécifiques pour nom de famille
             if (headerNormalized.includes('nom_de_famille') ||
                 headerNormalized.includes('famille') ||
                 headerNormalized.includes('family') ||
@@ -782,7 +670,6 @@ function detectColumns(headers) {
                 isLastName = true;
             }
             
-            // Simple "nom" mais PAS si c'est "prenom"
             if (!isLastName && headerNormalized.includes('nom') && !headerNormalized.includes('prenom')) {
                 isLastName = true;
             }
@@ -796,14 +683,10 @@ function detectColumns(headers) {
     return columnMap;
 }
 
-// ============================================
-// FONCTIONS DE PRÉPARATION CONTACTS
-// ============================================
 function prepareContacts(rows, headers, columnMap) {
     let validContacts = [];
     let skippedContacts = [];
     
-    // Vérifier si on a des colonnes séparées pour mobile/work/home
     let hasSeparateColumns = columnMap.phoneMobile >= 0 || columnMap.phoneWork >= 0 || columnMap.phoneHome >= 0;
     
     for (let row of rows) {
@@ -814,17 +697,14 @@ function prepareContacts(rows, headers, columnMap) {
         let rawPhone;
         
         if (hasSeparateColumns) {
-            // Mode colonnes séparées: priorité mobile > work > home
             let phoneMobile = columnMap.phoneMobile >= 0 ? row.values[columnMap.phoneMobile] || '' : '';
             let phoneWork = columnMap.phoneWork >= 0 ? row.values[columnMap.phoneWork] || '' : '';
             let phoneHome = columnMap.phoneHome >= 0 ? row.values[columnMap.phoneHome] || '' : '';
             
-            // Nettoyer les numéros (enlever espaces, tirets, etc.)
             phoneMobile = phoneMobile.replace(/[^0-9+]/g, '');
             phoneWork = phoneWork.replace(/[^0-9+]/g, '');
             phoneHome = phoneHome.replace(/[^0-9+]/g, '');
             
-            // Sélectionner selon priorité: mobile > work > home
             if (phoneMobile && phoneMobile.length >= 10) {
                 phoneExtraction = { phone: phoneMobile, source: 'mobile (colonne)' };
                 rawPhone = phoneMobile;
@@ -835,24 +715,19 @@ function prepareContacts(rows, headers, columnMap) {
                 phoneExtraction = { phone: phoneHome, source: 'home (colonne)' };
                 rawPhone = phoneHome;
             } else {
-                // Aucun numéro valide dans les colonnes séparées
                 phoneExtraction = { phone: '', source: 'vide' };
                 rawPhone = `mobile: ${phoneMobile}, work: ${phoneWork}, home: ${phoneHome}`;
             }
         } else {
-            // Mode colonne unique (format multi possible)
             rawPhone = columnMap.phone >= 0 ? row.values[columnMap.phone] || '' : '';
             phoneExtraction = extractPhoneFromMulti(rawPhone);
         }
         
-        // Nettoyer le prénom et nom
         let firstName = cleanName(rawFirstName);
         let lastName = cleanName(rawLastName);
         
-        // Formater le numéro
         let formattedPhone = formatPhoneNumber(phoneExtraction.phone);
         
-        // Valider
         let skipReason = validateContact(formattedPhone, firstName);
         
         if (skipReason) {
@@ -880,33 +755,25 @@ function prepareContacts(rows, headers, columnMap) {
 function cleanName(name) {
     if (!name) return '';
     
-    // Supprimer les guillemets orphelins
     name = name.replace(/"/g, '');
     
-    // Corriger les accents français corrompus
     name = fixFrenchAccents(name);
     
-    // Supprimer les caractères spéciaux au début et fin (garder les tirets et apostrophes au milieu)
     name = name.replace(/^[^a-zA-ZÀ-ÿ]+|[^a-zA-ZÀ-ÿ]+$/g, '');
     
-    // Si contient une virgule, prendre seulement la première partie
     if (name.includes(',')) {
         name = name.split(',')[0].trim();
     }
     
-    // Fonction helper pour capitaliser un mot tout en préservant les accents
     function capitalizeWord(word) {
         if (word.length === 0) return word;
         return word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
     }
     
-    // Gérer les noms avec tiret (Anne-Marie, Jean-Pierre)
     name = name.split('-').map(capitalizeWord).join('-');
     
-    // Gérer les espaces (noms composés comme "Marie Eve")
     name = name.split(' ').map(capitalizeWord).join(' ');
     
-    // Gérer O'Brien, etc.
     name = name.replace(/'(\w)/g, (match, letter) => "'" + letter.toUpperCase());
     
     return name.trim();
@@ -917,37 +784,27 @@ function extractPhoneFromMulti(phoneField) {
     
     let raw = phoneField.trim();
     
-    // Si c'est un format simple (pas de | ou :), retourner directement
     if (!raw.includes('|') && !raw.includes(':')) {
         return { phone: raw, source: 'direct' };
     }
     
-    // Format Velocity CRM: "4389266456 : work | 5798819696 : home | 4389266456 : mobile"
-    // Le format est: numéro : type | numéro : type
-    // Séparateur entre paires est |
     let pairs = raw.split('|').map(p => p.trim()).filter(p => p.length > 0);
     
     let phones = [];
     for (let pair of pairs) {
-        // Séparer par : pour obtenir numéro et type
         let parts = pair.split(':').map(p => p.trim());
         if (parts.length >= 2) {
-            // Format: "4389266456 : work" ou "4389266456 ext: 123 : work"
             let number = parts[0];
-            let type = parts[parts.length - 1].toLowerCase(); // Dernier élément est le type
+            let type = parts[parts.length - 1].toLowerCase();
             
-            // Si le numéro contient "ext", reconstruire
             if (parts.length > 2) {
-                // Format avec extension: "4389266456 ext: 123 : work"
                 number = parts.slice(0, parts.length - 1).join(':').trim();
             }
             
-            // Vérifier que c'est bien un numéro (au moins 7 chiffres)
             if (number.replace(/\D/g, '').length >= 7) {
                 phones.push({ type, number });
             }
         } else if (parts.length === 1) {
-            // Juste un numéro sans type
             let digits = parts[0].replace(/\D/g, '');
             if (digits.length >= 10) {
                 phones.push({ type: 'unknown', number: parts[0] });
@@ -956,17 +813,14 @@ function extractPhoneFromMulti(phoneField) {
     }
     
     if (phones.length === 0) {
-        // Essayer d'extraire n'importe quel numéro valide de la chaîne brute
         let digits = raw.replace(/\D/g, '');
         if (digits.length >= 10) {
-            // Prendre les 10-11 premiers chiffres
             let extracted = digits.substring(0, 11);
             return { phone: extracted, source: 'extrait' };
         }
         return { phone: '', source: 'aucun trouvé' };
     }
     
-    // Chercher par priorité: mobile > work > home
     for (let priority of CONFIG.phonePriority) {
         for (let p of phones) {
             if (p.type.includes(priority)) {
@@ -975,33 +829,27 @@ function extractPhoneFromMulti(phoneField) {
         }
     }
     
-    // Si aucune priorité trouvée, prendre le premier
     return { phone: phones[0].number, source: phones[0].type + ' (1er)' };
 }
 
 function formatPhoneNumber(phone) {
     if (!phone) return '';
     
-    // Garder seulement les chiffres et le +
     let cleaned = phone.replace(/[^\d+]/g, '');
     
-    // Si commence par +1, garder tel quel
     if (cleaned.startsWith('+1') && cleaned.length === 12) {
         return cleaned;
     }
     
-    // Si commence par 1 et a 11 chiffres
     if (cleaned.startsWith('1') && cleaned.length === 11) {
         return '+' + cleaned;
     }
     
-    // Si 10 chiffres, ajouter +1
     let digits = cleaned.replace(/\D/g, '');
     if (digits.length === 10) {
         return '+1' + digits;
     }
     
-    // Si 11 chiffres commençant par 1
     if (digits.length === 11 && digits.startsWith('1')) {
         return '+' + digits;
     }
@@ -1010,12 +858,10 @@ function formatPhoneNumber(phone) {
 }
 
 function validateContact(phone, firstName) {
-    // Vérifier prénom
     if (!firstName || firstName.trim().length === 0) {
         return `Prénom manquant`;
     }
     
-    // Vérifier téléphone
     let phoneDigits = phone.replace(/\D/g, '');
     
     if (!phoneDigits || phoneDigits.length < 10) {
@@ -1029,11 +875,7 @@ function validateContact(phone, firstName) {
     return null;
 }
 
-// ============================================
-// FONCTIONS UI
-// ============================================
 async function showDebugReport(validContacts, skippedContacts, messageTemplate, separator = 'virgule') {
-    // Construire le tableau HTML des contacts valides
     let validRows = validContacts.map(c => `
         <tr>
             <td>${c.lineNumber}</td>
@@ -1044,7 +886,6 @@ async function showDebugReport(validContacts, skippedContacts, messageTemplate, 
         </tr>
     `).join('');
     
-    // Construire le tableau HTML des contacts ignorés
     let skipRows = skippedContacts.map(s => `
         <tr>
             <td>${s.lineNumber}</td>
@@ -1054,7 +895,6 @@ async function showDebugReport(validContacts, skippedContacts, messageTemplate, 
         </tr>
     `).join('');
     
-    // Aperçu du message
     let preview = '';
     if (validContacts.length > 0) {
         preview = messageTemplate
@@ -1144,7 +984,6 @@ async function showDebugReport(validContacts, skippedContacts, messageTemplate, 
 }
 
 async function showPreviewReport(validContacts, skippedContacts, messageTemplate, separator = 'virgule') {
-    // Construire le tableau HTML des contacts valides
     let validRows = validContacts.map(c => `
         <tr>
             <td>${c.lineNumber}</td>
@@ -1155,7 +994,6 @@ async function showPreviewReport(validContacts, skippedContacts, messageTemplate
         </tr>
     `).join('');
     
-    // Construire le tableau HTML des contacts ignorés
     let skipRows = skippedContacts.map(s => `
         <tr>
             <td>${s.lineNumber}</td>
@@ -1165,7 +1003,6 @@ async function showPreviewReport(validContacts, skippedContacts, messageTemplate
         </tr>
     `).join('');
     
-    // Aperçu du message
     let preview = '';
     if (validContacts.length > 0) {
         preview = messageTemplate
@@ -1257,10 +1094,8 @@ async function showPreviewReport(validContacts, skippedContacts, messageTemplate
         </html>
     `);
     
-    // Show preview
     await wv.present();
     
-    // After viewing, ask for confirmation with native Alert
     let alert = new Alert();
     alert.title = "🚀 Envoyer la campagne?";
     alert.message = `${validContacts.length} messages seront envoyés.`;
@@ -1268,7 +1103,7 @@ async function showPreviewReport(validContacts, skippedContacts, messageTemplate
     alert.addCancelAction("Annuler");
     
     let choice = await alert.present();
-    return choice === 0; // 0 = Envoyer, -1 = Annuler
+    return choice === 0;
 }
 
 async function getMessageTemplate() {
@@ -1384,9 +1219,6 @@ async function showError(message) {
     await alert.present();
 }
 
-// ============================================
-// FONCTIONS D'ENVOI
-// ============================================
 async function sendMessagesFast(contacts, messageTemplate) {
     let sentCount = 0;
     
@@ -1405,7 +1237,6 @@ async function sendMessagesFast(contacts, messageTemplate) {
             await msg.send();
             sentCount++;
         } catch (error) {
-            // L'utilisateur a annulé - demander s'il veut arrêter
             let stopAlert = new Alert();
             stopAlert.title = "Message annulé";
             stopAlert.message = `Tu as annulé le message pour ${contact.firstName}.\n\nVeux-tu arrêter l'envoi?\n\n✅ ${sentCount} envoyé(s)\n⏳ ${contacts.length - i - 1} restant(s)`;
@@ -1416,10 +1247,8 @@ async function sendMessagesFast(contacts, messageTemplate) {
             let choice = await stopAlert.present();
             
             if (choice === 0 || choice === -1) {
-                // Arrêter tout
                 return { sentCount, stopped: true, stoppedAt: contact.firstName };
             }
-            // choice === 1: continuer avec le prochain contact
         }
     }
     
@@ -1431,4 +1260,3 @@ function escapeRegExp(string) {
 }
 
 await main();
-// Test 1764717075
