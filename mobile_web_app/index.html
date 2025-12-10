@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="SMS Campaign">
+    <title>SMS Campaign - Logipret</title>
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%231c1c1e' width='100' height='100' rx='20'/><text y='65' x='50' text-anchor='middle' font-size='50'>📱</text></svg>">
+    <style>
+        * {
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #1c1c1e;
+            color: #fff;
+            margin: 0;
+            padding: 20px;
+            padding-top: env(safe-area-inset-top, 20px);
+            padding-bottom: calc(env(safe-area-inset-bottom, 20px) + 100px);
+            min-height: 100vh;
+        }
+        
+        h1 {
+            font-size: 24px;
+            margin: 0 0 5px 0;
+        }
+        
+        .subtitle {
+            color: #888;
+            font-size: 13px;
+            margin-bottom: 20px;
+        }
+        
+        .card {
+            background: #2c2c2e;
+            border-radius: 12px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+        
+        .card h2 {
+            font-size: 14px;
+            color: #888;
+            margin: 0 0 12px 0;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        input[type="file"] {
+            display: none;
+        }
+        
+        .file-btn {
+            display: block;
+            width: 100%;
+            padding: 14px;
+            background: #0a84ff;
+            color: #fff;
+            border: none;
+            border-radius: 10px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            text-align: center;
+        }
+        
+        .file-btn:active {
+            background: #0070e0;
+        }
+        
+        .file-info {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #30d158;
+        }
+        
+        textarea {
+            width: 100%;
+            height: 120px;
+            background: #3a3a3c;
+            color: #fff;
+            border: 1px solid #555;
+            border-radius: 10px;
+            padding: 12px;
+            font-size: 16px;
+            font-family: inherit;
+            resize: none;
+        }
+        
+        textarea:focus {
+            outline: none;
+            border-color: #0a84ff;
+        }
+        
+        .variables {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .var-btn {
+            background: #0a84ff;
+            color: #fff;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+        }
+        
+        .var-btn:active {
+            background: #0070e0;
+        }
+        
+        .stats {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .stat {
+            flex: 1;
+            padding: 12px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat.valid {
+            background: #1a3d1a;
+            border: 1px solid #30d158;
+        }
+        
+        .stat.skip {
+            background: #3d1a1a;
+            border: 1px solid #ff453a;
+        }
+        
+        .stat .num {
+            font-size: 28px;
+            font-weight: bold;
+        }
+        
+        .stat .label {
+            font-size: 11px;
+            color: #888;
+            margin-top: 4px;
+        }
+        
+        .contact-list {
+            max-height: 200px;
+            overflow-y: auto;
+            border-radius: 8px;
+        }
+        
+        .contact-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            background: #3a3a3c;
+            border-radius: 8px;
+            margin-bottom: 8px;
+        }
+        
+        .contact-item.current {
+            background: #0a84ff33;
+            border: 1px solid #0a84ff;
+        }
+        
+        .contact-item.sent {
+            opacity: 0.5;
+        }
+        
+        .contact-name {
+            font-weight: 600;
+        }
+        
+        .contact-phone {
+            font-family: monospace;
+            color: #0a84ff;
+            font-size: 13px;
+        }
+        
+        .contact-status {
+            font-size: 20px;
+        }
+        
+        .preview-box {
+            background: #3a3a3c;
+            padding: 14px;
+            border-radius: 10px;
+            white-space: pre-wrap;
+            line-height: 1.5;
+            font-size: 15px;
+        }
+        
+        .preview-box .var {
+            background: #0a84ff33;
+            color: #0a84ff;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+        
+        .bottom-bar {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 16px;
+            padding-bottom: calc(env(safe-area-inset-bottom, 16px) + 16px);
+            background: #1c1c1e;
+            border-top: 1px solid #333;
+        }
+        
+        .send-btn {
+            display: block;
+            width: 100%;
+            padding: 16px;
+            background: #30d158;
+            color: #fff;
+            border: none;
+            border-radius: 12px;
+            font-size: 18px;
+            font-weight: 600;
+            cursor: pointer;
+        }
+        
+        .send-btn:disabled {
+            background: #3a3a3c;
+            color: #666;
+        }
+        
+        .send-btn:active:not(:disabled) {
+            background: #28a745;
+        }
+        
+        .progress-info {
+            text-align: center;
+            margin-bottom: 12px;
+            font-size: 14px;
+            color: #888;
+        }
+        
+        .hidden {
+            display: none !important;
+        }
+        
+        .step {
+            display: none;
+        }
+        
+        .step.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <h1>📱 SMS Campaign</h1>
+    <p class="subtitle">Logipret - Envoi de SMS en masse</p>
+    
+    <!-- Step 1: Upload CSV -->
+    <div id="step1" class="step active">
+        <div class="card">
+            <h2>1. Importer le fichier CSV</h2>
+            <label class="file-btn" for="csvFile">
+                📄 Choisir un fichier CSV
+            </label>
+            <input type="file" id="csvFile" accept=".csv,.txt">
+            <div id="fileInfo" class="file-info hidden"></div>
+        </div>
+    </div>
+    
+    <!-- Step 2: Write Message -->
+    <div id="step2" class="step">
+        <div class="card">
+            <h2>2. Écrire le message</h2>
+            <div class="variables">
+                <button class="var-btn" onclick="insertVariable('**PRENOM**')">Prénom</button>
+                <button class="var-btn" onclick="insertVariable('**NOM**')">Nom</button>
+            </div>
+            <textarea id="messageTemplate" placeholder="Écris ton message ici...">Bonjour **PRENOM**,
+
+</textarea>
+        </div>
+        
+        <div class="card">
+            <h2>Aperçu</h2>
+            <div id="previewBox" class="preview-box"></div>
+        </div>
+        
+        <div class="stats">
+            <div class="stat valid">
+                <div class="num" id="validCount">0</div>
+                <div class="label">VALIDES</div>
+            </div>
+            <div class="stat skip">
+                <div class="num" id="skipCount">0</div>
+                <div class="label">IGNORÉS</div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Step 3: Send -->
+    <div id="step3" class="step">
+        <div class="card">
+            <h2>Envoi en cours</h2>
+            <div class="progress-info">
+                Contact <span id="currentIndex">1</span> / <span id="totalContacts">0</span>
+            </div>
+            <div id="contactsList" class="contact-list"></div>
+        </div>
+        
+        <div class="card">
+            <h2>📝 Message pour ce contact</h2>
+            <div id="currentMessage" class="preview-box"></div>
+        </div>
+    </div>
+    
+    <!-- Bottom Action Bar -->
+    <div class="bottom-bar">
+        <button id="actionBtn" class="send-btn" disabled>Importer un CSV d'abord</button>
+    </div>
+    
+    <script>
+        // State
+        let contacts = [];
+        let skippedContacts = [];
+        let currentContactIndex = 0;
+        let messageTemplate = '';
+        let currentStep = 1;
+        
+        // Config (same as Scriptable version)
+        const CONFIG = {
+            phoneColumns: ['phone', 'telephone', 'tel', 'numéro', 'numero', 'b2_telephone', 'b1_telephone'],
+            mobileColumns: ['mobile', 'cell', 'cellulaire', 'cellular', 'cell_phone', 'mobile_phone'],
+            workColumns: ['work', 'travail', 'bureau', 'office', 'work_phone', 'business', 'professionnel'],
+            homeColumns: ['home', 'maison', 'domicile', 'residence', 'home_phone', 'personnel'],
+            firstNameColumns: ['prenom', 'prénom', 'firstname', 'first name', 'first', 'given name', 'b2_prenom', 'b2_prénom', 'b1_prenom', 'b1_prénom'],
+            lastNameColumns: ['nom', 'lastname', 'last name', 'last', 'family name', 'surname', 'b2_nom', 'famille', 'b1_nom'],
+        };
+        
+        // DOM elements
+        const csvFileInput = document.getElementById('csvFile');
+        const fileInfo = document.getElementById('fileInfo');
+        const messageInput = document.getElementById('messageTemplate');
+        const previewBox = document.getElementById('previewBox');
+        const actionBtn = document.getElementById('actionBtn');
+        const validCountEl = document.getElementById('validCount');
+        const skipCountEl = document.getElementById('skipCount');
+        
+        // Event listeners
+        csvFileInput.addEventListener('change', handleFileSelect);
+        messageInput.addEventListener('input', updatePreview);
+        actionBtn.addEventListener('click', handleAction);
+        
+        function showStep(step) {
+            currentStep = step;
+            document.querySelectorAll('.step').forEach(s => s.classList.remove('active'));
+            document.getElementById('step' + step).classList.add('active');
+            updateActionButton();
+        }
+        
+        function updateActionButton() {
+            if (currentStep === 1) {
+                actionBtn.textContent = 'Importer un CSV d\'abord';
+                actionBtn.disabled = true;
+            } else if (currentStep === 2) {
+                actionBtn.textContent = `🚀 Commencer l'envoi (${contacts.length} contacts)`;
+                actionBtn.disabled = contacts.length === 0;
+            } else if (currentStep === 3) {
+                actionBtn.textContent = `📨 Envoyer à ${contacts[currentContactIndex]?.firstName || ''}`;
+                actionBtn.disabled = false;
+            }
+        }
+        
+        function handleAction() {
+            if (currentStep === 2) {
+                messageTemplate = messageInput.value;
+                currentContactIndex = 0;
+                showStep(3);
+                renderContactsList();
+                updateCurrentMessage();
+            } else if (currentStep === 3) {
+                sendCurrentMessage();
+            }
+        }
+        
+        async function handleFileSelect(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            
+            const content = await file.text();
+            parseCSV(content);
+            
+            fileInfo.textContent = `✅ ${file.name} - ${contacts.length} contacts valides`;
+            fileInfo.classList.remove('hidden');
+            
+            validCountEl.textContent = contacts.length;
+            skipCountEl.textContent = skippedContacts.length;
+            
+            showStep(2);
+            updatePreview();
+        }
+        
+        function parseCSV(content) {
+            contacts = [];
+            skippedContacts = [];
+            
+            // Detect separator
+            const firstLines = content.split(/\r\n|\n|\r/).slice(0, 5).join('\n');
+            const separators = [
+                { char: ',', count: (firstLines.match(/,/g) || []).length },
+                { char: ';', count: (firstLines.match(/;/g) || []).length },
+                { char: '\t', count: (firstLines.match(/\t/g) || []).length }
+            ];
+            separators.sort((a, b) => b.count - a.count);
+            const separator = separators[0].char;
+            
+            const lines = content.split(/\r\n|\n|\r/).filter(l => l.trim());
+            if (lines.length < 2) return;
+            
+            const headers = parseCSVLine(lines[0], separator).map(h => h.toLowerCase().trim());
+            const columnMap = detectColumns(headers);
+            
+            for (let i = 1; i < lines.length; i++) {
+                const values = parseCSVLine(lines[i], separator);
+                
+                const firstName = cleanName(columnMap.firstName >= 0 ? values[columnMap.firstName] : '');
+                const lastName = cleanName(columnMap.lastName >= 0 ? values[columnMap.lastName] : '');
+                
+                let phone = '';
+                if (columnMap.phoneMobile >= 0) phone = values[columnMap.phoneMobile];
+                else if (columnMap.phoneWork >= 0) phone = values[columnMap.phoneWork];
+                else if (columnMap.phoneHome >= 0) phone = values[columnMap.phoneHome];
+                else if (columnMap.phone >= 0) phone = values[columnMap.phone];
+                
+                phone = formatPhoneNumber(phone || '');
+                
+                if (!firstName) {
+                    skippedContacts.push({ line: i + 1, reason: 'Prénom manquant' });
+                } else if (!phone || phone.replace(/\D/g, '').length < 10) {
+                    skippedContacts.push({ line: i + 1, reason: 'Téléphone invalide' });
+                } else {
+                    contacts.push({ firstName, lastName, phone, sent: false });
+                }
+            }
+        }
+        
+        function parseCSVLine(line, separator) {
+            const result = [];
+            let current = '';
+            let inQuotes = false;
+            
+            for (let i = 0; i < line.length; i++) {
+                const char = line[i];
+                if (char === '"') {
+                    if (inQuotes && line[i + 1] === '"') {
+                        current += '"';
+                        i++;
+                    } else {
+                        inQuotes = !inQuotes;
+                    }
+                } else if (char === separator && !inQuotes) {
+                    result.push(current.trim());
+                    current = '';
+                } else {
+                    current += char;
+                }
+            }
+            result.push(current.trim());
+            return result;
+        }
+        
+        function detectColumns(headers) {
+            const map = { phone: -1, phoneMobile: -1, phoneWork: -1, phoneHome: -1, firstName: -1, lastName: -1 };
+            
+            headers.forEach((h, i) => {
+                const norm = h.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]/g, '_');
+                
+                if (map.phoneMobile === -1 && CONFIG.mobileColumns.some(c => h.includes(c) || norm.includes(c))) map.phoneMobile = i;
+                if (map.phoneWork === -1 && CONFIG.workColumns.some(c => h.includes(c) || norm.includes(c))) map.phoneWork = i;
+                if (map.phoneHome === -1 && CONFIG.homeColumns.some(c => h.includes(c) || norm.includes(c))) map.phoneHome = i;
+                if (map.phone === -1 && CONFIG.phoneColumns.some(c => h.includes(c) || norm.includes(c))) map.phone = i;
+                if (map.firstName === -1 && CONFIG.firstNameColumns.some(c => h.includes(c) || norm.includes(c))) map.firstName = i;
+                if (map.lastName === -1 && CONFIG.lastNameColumns.some(c => h.includes(c) || norm.includes(c))) map.lastName = i;
+            });
+            
+            return map;
+        }
+        
+        function cleanName(name) {
+            if (!name) return '';
+            name = name.replace(/"/g, '').trim();
+            if (name.includes(',')) name = name.split(',')[0];
+            return name.split(/[\s-]/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        }
+        
+        function formatPhoneNumber(phone) {
+            let cleaned = phone.replace(/[^\d+]/g, '');
+            const digits = cleaned.replace(/\D/g, '');
+            
+            if (digits.length === 10) return '+1' + digits;
+            if (digits.length === 11 && digits.startsWith('1')) return '+' + digits;
+            return cleaned;
+        }
+        
+        function insertVariable(varName) {
+            const ta = messageInput;
+            const start = ta.selectionStart;
+            const end = ta.selectionEnd;
+            const before = ta.value.substring(0, start);
+            const after = ta.value.substring(end);
+            ta.value = before + varName + ' ' + after;
+            ta.selectionStart = ta.selectionEnd = start + varName.length + 1;
+            ta.focus();
+            updatePreview();
+        }
+        
+        function updatePreview() {
+            if (contacts.length === 0) {
+                previewBox.innerHTML = '<span style="color:#888">Importe un CSV pour voir l\'aperçu</span>';
+                return;
+            }
+            
+            const c = contacts[0];
+            let preview = messageInput.value
+                .replace(/\*\*PRENOM\*\*/g, `<span class="var">${c.firstName}</span>`)
+                .replace(/\*\*NOM\*\*/g, `<span class="var">${c.lastName}</span>`);
+            previewBox.innerHTML = preview;
+        }
+        
+        function renderContactsList() {
+            const list = document.getElementById('contactsList');
+            const start = Math.max(0, currentContactIndex - 1);
+            const end = Math.min(contacts.length, currentContactIndex + 4);
+            
+            list.innerHTML = contacts.slice(start, end).map((c, i) => {
+                const actualIndex = start + i;
+                let cls = 'contact-item';
+                if (actualIndex === currentContactIndex) cls += ' current';
+                if (c.sent) cls += ' sent';
+                
+                return `
+                    <div class="${cls}">
+                        <div>
+                            <div class="contact-name">${c.firstName} ${c.lastName}</div>
+                            <div class="contact-phone">${c.phone}</div>
+                        </div>
+                        <div class="contact-status">${c.sent ? '✅' : (actualIndex === currentContactIndex ? '👉' : '⏳')}</div>
+                    </div>
+                `;
+            }).join('');
+            
+            document.getElementById('currentIndex').textContent = currentContactIndex + 1;
+            document.getElementById('totalContacts').textContent = contacts.length;
+        }
+        
+        function updateCurrentMessage() {
+            const c = contacts[currentContactIndex];
+            if (!c) return;
+            
+            const message = messageTemplate
+                .replace(/\*\*PRENOM\*\*/g, c.firstName)
+                .replace(/\*\*NOM\*\*/g, c.lastName);
+            
+            document.getElementById('currentMessage').textContent = message;
+            updateActionButton();
+        }
+        
+        function sendCurrentMessage() {
+            const c = contacts[currentContactIndex];
+            if (!c) return;
+            
+            const message = messageTemplate
+                .replace(/\*\*PRENOM\*\*/g, c.firstName)
+                .replace(/\*\*NOM\*\*/g, c.lastName);
+            
+            // Open SMS app with pre-filled message
+            const smsUrl = `sms:${c.phone}&body=${encodeURIComponent(message)}`;
+            window.location.href = smsUrl;
+            
+            // Mark as sent and move to next
+            c.sent = true;
+            currentContactIndex++;
+            
+            if (currentContactIndex >= contacts.length) {
+                // All done!
+                setTimeout(() => {
+                    alert(`✅ Campagne terminée!\n\n${contacts.length} messages envoyés.`);
+                    showStep(1);
+                    contacts = [];
+                    currentContactIndex = 0;
+                }, 500);
+            } else {
+                setTimeout(() => {
+                    renderContactsList();
+                    updateCurrentMessage();
+                }, 300);
+            }
+        }
+        
+        // Initial state
+        updatePreview();
+    </script>
+</body>
+</html>
