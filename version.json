@@ -1,7 +1,6 @@
 {
-    "version": "1.1
-const SCRIPT_VERSION = "${SCRIPT_VERSION}";.32",
-    "changelog": "Test update notification",
+    "version": "1.1.35",
+    "changelog": "Keychain-based auth storage",
     "date": "2025-12-10",
-    "build": 32
+    "build": 35
 }
