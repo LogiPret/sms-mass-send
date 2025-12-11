@@ -19,12 +19,18 @@ from urllib.request import urlopen, Request
 from urllib.error import URLError
 from io import StringIO
 import time
+import ssl
+
+# Create SSL context that doesn't verify certificates (needed for PyInstaller bundled apps)
+SSL_CONTEXT = ssl.create_default_context()
+SSL_CONTEXT.check_hostname = False
+SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 
 # ============================================================================
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.2"
+VERSION = "2.4.3"
 BUILD = 1
 
 CONFIG = {
@@ -1282,7 +1288,7 @@ def check_for_update():
     """Check if a new version is available."""
     try:
         req = Request(CONFIG["update_url"], headers={"Cache-Control": "no-cache"})
-        with urlopen(req, timeout=10) as response:
+        with urlopen(req, timeout=10, context=SSL_CONTEXT) as response:
             data = json.loads(response.read().decode('utf-8'))
             remote_version = data.get("version", "0.0.0")
             download_url = data.get("download_url", CONFIG["download_url"])
@@ -1424,7 +1430,7 @@ def verify_code_with_webhook(code):
             method="POST"
         )
         
-        with urlopen(req, timeout=30) as response:
+        with urlopen(req, timeout=30, context=SSL_CONTEXT) as response:
             result = json.loads(response.read().decode('utf-8'))
             return result.get("valid", False), result.get("message", "Unknown error")
     except URLError as e:

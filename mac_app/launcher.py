@@ -14,8 +14,14 @@ import tempfile
 import zipfile
 import time
 import traceback
+import ssl
 from datetime import datetime
 from urllib.request import urlopen, Request
+
+# Create SSL context that doesn't verify certificates (needed for PyInstaller bundled apps)
+SSL_CONTEXT = ssl.create_default_context()
+SSL_CONTEXT.check_hostname = False
+SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 
 # ============================================================================
 # LOGGING
@@ -108,7 +114,7 @@ def check_for_update():
     try:
         req = Request(CONFIG["update_url"] + "?t=" + str(int(time.time())), 
                      headers={"Cache-Control": "no-cache", "Pragma": "no-cache"})
-        with urlopen(req, timeout=10) as response:
+        with urlopen(req, timeout=10, context=SSL_CONTEXT) as response:
             data = json.loads(response.read().decode('utf-8'))
             remote_version = data.get("version", "0.0.0")
             download_url = data.get("download_url", "")
