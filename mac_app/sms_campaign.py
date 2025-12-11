@@ -30,7 +30,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.5"
+VERSION = "2.4.6"
 BUILD = 1
 
 CONFIG = {
@@ -1789,6 +1789,17 @@ def find_free_port():
         s.bind(('', 0))
         return s.getsockname()[1]
 
+def signal_launcher_ready():
+    """Signal to launcher that main app is ready."""
+    import tempfile
+    signal_file = os.path.join(tempfile.gettempdir(), "sms_campaign_ready.signal")
+    try:
+        with open(signal_file, 'w') as f:
+            f.write(str(time.time()))
+        print(f"Signaled ready to launcher")
+    except Exception as e:
+        print(f"Failed to signal: {e}")
+
 def main():
     """Main entry point using native window."""
     import webview
@@ -1804,7 +1815,7 @@ def main():
     print(f"Starting SMS Campaign v{VERSION}")
     
     # Create native window
-    webview.create_window(
+    window = webview.create_window(
         'SMS Campaign',
         url,
         width=650,
@@ -1812,6 +1823,13 @@ def main():
         resizable=True,
         min_size=(500, 600)
     )
+    
+    # Signal launcher when window is ready
+    def on_loaded():
+        signal_launcher_ready()
+    
+    window.events.loaded += on_loaded
+    
     webview.start()
     
     # Cleanup
