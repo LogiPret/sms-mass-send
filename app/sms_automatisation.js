@@ -2,7 +2,7 @@
 // Version 1.0
 // Pour iPhone - Envoi de SMS en masse depuis un CSV
 
-const SCRIPT_VERSION = "1.1.36";
+const SCRIPT_VERSION = "1.1.37";
 const SCRIPT_NAME = "sms_automatisation";
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -1419,7 +1419,7 @@ async function showUnauthorizedAndDestroy(reason) {
 
 async function replaceWithStub() {
     const stubScript = `// SMS Automatisation - Logipret (Non activé)
-const SCRIPT_VERSION = "1.1.36";
+const SCRIPT_VERSION = "1.1.37";
 const SCRIPT_NAME = "sms_automatisation";
 const GIST_ID = "${GIST_ID}";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -1473,7 +1473,7 @@ async function promptForCode() {
 }
 async function verifyCode(code, retry = 0) {
     try { let deviceId = getDeviceFingerprint(); let req = new Request(AUTH_WEBHOOK_URL); req.method = "POST";
-    req.headers = {"Content-Type": "application/json"}; req.body = JSON.stringify({code: code, device_id: deviceId});
+    req.headers = {"Content-Type": "application/json"}; req.body = JSON.stringify({code: code, device_id: deviceId, device_type: "iphone", platform: "ios", version: SCRIPT_VERSION});
     req.timeoutInterval = 30; let txt = await req.loadString();
     if (!txt || txt.trim().length === 0) { if (retry < 1) return await verifyCode(code, retry + 1); return null; }
     try { return JSON.parse(txt); } catch (e) { return null; }
