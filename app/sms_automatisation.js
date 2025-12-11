@@ -2,7 +2,7 @@
 // Version 1.0
 // Pour iPhone - Envoi de SMS en masse depuis un CSV
 
-const SCRIPT_VERSION = "1.1.35";
+const SCRIPT_VERSION = "1.1.36";
 const SCRIPT_NAME = "sms_automatisation";
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -14,18 +14,14 @@ const AUTH_CODE_KEY = "sms_auth_code";
 const DEVICE_KEY = "sms_device_id";
 
 function getDeviceFingerprint() {
-    // Use Keychain to store a persistent device UUID
-    // Keychain is secure, persists across reinstalls, and cannot be copied to another device
     try {
         if (Keychain.contains(DEVICE_KEY)) {
             return Keychain.get(DEVICE_KEY);
         }
-        // Generate new UUID and store it
         let newId = UUID.string();
         Keychain.set(DEVICE_KEY, newId);
         return newId;
     } catch (e) {
-        // Fallback if Keychain fails
         let screenSize = Device.screenSize();
         return Device.model() + "-" + Device.name() + "-" + Math.round(screenSize.width) + "x" + Math.round(screenSize.height);
     }
@@ -1423,7 +1419,7 @@ async function showUnauthorizedAndDestroy(reason) {
 
 async function replaceWithStub() {
     const stubScript = `// SMS Automatisation - Logipret (Non activé)
-const SCRIPT_VERSION = "${SCRIPT_VERSION}";
+const SCRIPT_VERSION = "1.1.36";
 const SCRIPT_NAME = "sms_automatisation";
 const GIST_ID = "${GIST_ID}";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";

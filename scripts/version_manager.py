@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Version Manager for SMS Campaign
-Handles automatic version bumping and release creation.
+Handles automatic version bumping and release creation for BOTH Mac and Mobile apps.
 """
 
 import json
@@ -13,31 +13,60 @@ from pathlib import Path
 
 # Paths
 REPO_ROOT = Path(__file__).parent.parent
-MAC_APP_DIR = REPO_ROOT / "mac_app"
-VERSION_JSON = MAC_APP_DIR / "version.json"
-SMS_CAMPAIGN_PY = MAC_APP_DIR / "sms_campaign.py"
-PHONE_APP_DIR = REPO_ROOT / "app"
-PHONE_VERSION_JSON = PHONE_APP_DIR / "version.json" if (REPO_ROOT / "app" / "version.json").exists() else None
 
-def get_local_version():
-    """Get the current local version from version.json."""
-    try:
-        with open(VERSION_JSON) as f:
-            data = json.load(f)
-            return data.get("version", "0.0.0")
-    except:
+# Mac App Config
+MAC_APP_DIR = REPO_ROOT / "mac_app"
+MAC_VERSION_JSON = MAC_APP_DIR / "version.json"
+MAC_SMS_CAMPAIGN_PY = MAC_APP_DIR / "sms_campaign.py"
+MAC_GIST_ID = "3e89759cac04be452c935c90b5733eea"
+
+# Mobile App Config
+MOBILE_APP_DIR = REPO_ROOT / "app"
+MOBILE_SCRIPT = MOBILE_APP_DIR / "sms_automatisation.js"
+MOBILE_VERSION_JSON = MOBILE_APP_DIR / "version.json"
+MOBILE_GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e"
+
+def get_local_version(app_type="mac"):
+    """Get the current local version."""
+    if app_type == "mac":
+        try:
+            with open(MAC_VERSION_JSON) as f:
+                data = json.load(f)
+                return data.get("version", "0.0.0")
+        except:
+            return "0.0.0"
+    else:  # mobile
+        try:
+            with open(MOBILE_SCRIPT) as f:
+                content = f.read()
+                match = re.search(r'const SCRIPT_VERSION = "([^"]+)"', content)
+                if match:
+                    return match.group(1)
+        except:
+            pass
         return "0.0.0"
 
-def get_remote_version():
+def get_remote_version(app_type="mac"):
     """Get the version from the remote Gist."""
     try:
         import urllib.request
-        url = "https://gist.githubusercontent.com/hugootth/3e89759cac04be452c935c90b5733eea/raw/version.json"
-        with urllib.request.urlopen(url + "?t=" + str(int(__import__('time').time())), timeout=10) as response:
+        import time
+        
+        if app_type == "mac":
+            gist_id = MAC_GIST_ID
+        else:
+            gist_id = MOBILE_GIST_ID
+            
+        url = f"https://gist.githubusercontent.com/hugootth/{gist_id}/raw/version.json"
+        # For mobile, try HugoOtth (capital O)
+        if app_type == "mobile":
+            url = f"https://gist.githubusercontent.com/HugoOtth/{gist_id}/raw/version.json"
+            
+        with urllib.request.urlopen(url + "?t=" + str(int(time.time())), timeout=10) as response:
             data = json.loads(response.read().decode('utf-8'))
             return data.get("version", "0.0.0")
     except Exception as e:
-        print(f"Could not fetch remote version: {e}")
+        print(f"Could not fetch remote version for {app_type}: {e}")
         return None
 
 def parse_version(v):
@@ -67,15 +96,15 @@ def bump_version(version, bump_type="patch"):
     return ".".join(str(p) for p in parts)
 
 def update_version_json(new_version):
-    """Update version.json with new version."""
+    """Update Mac version.json with new version."""
     try:
-        with open(VERSION_JSON) as f:
+        with open(MAC_VERSION_JSON) as f:
             data = json.load(f)
         
         data["version"] = new_version
         data["changelog"] = f"Version {new_version}"
         
-        with open(VERSION_JSON, 'w') as f:
+        with open(MAC_VERSION_JSON, 'w') as f:
             json.dump(data, f, indent=4)
         
         return True
@@ -86,7 +115,7 @@ def update_version_json(new_version):
 def update_python_version(new_version):
     """Update VERSION in sms_campaign.py."""
     try:
-        with open(SMS_CAMPAIGN_PY) as f:
+        with open(MAC_SMS_CAMPAIGN_PY) as f:
             content = f.read()
         
         # Replace VERSION = "x.x.x"
@@ -96,7 +125,7 @@ def update_python_version(new_version):
             content
         )
         
-        with open(SMS_CAMPAIGN_PY, 'w') as f:
+        with open(MAC_SMS_CAMPAIGN_PY, 'w') as f:
             f.write(content)
         
         return True
@@ -119,6 +148,81 @@ def mac_app_files_changed():
     """Check if any mac_app files are staged for commit."""
     changed = get_changed_files()
     return any(f.startswith("mac_app/") for f in changed if f)
+
+def mobile_app_files_changed():
+    """Check if any app/ files are staged for commit."""
+    changed = get_changed_files()
+    return any(f.startswith("app/") for f in changed if f)
+
+def update_mobile_script_version(new_version):
+    """Update SCRIPT_VERSION in sms_automatisation.js."""
+    try:
+        with open(MOBILE_SCRIPT) as f:
+            content = f.read()
+        
+        # Replace SCRIPT_VERSION = "x.x.x"
+        content = re.sub(
+            r'const SCRIPT_VERSION = "[^"]*"',
+            f'const SCRIPT_VERSION = "{new_version}"',
+            content
+        )
+        
+        with open(MOBILE_SCRIPT, 'w') as f:
+            f.write(content)
+        
+        return True
+    except Exception as e:
+        print(f"Error updating sms_automatisation.js: {e}")
+        return False
+
+def update_mobile_version_json(new_version):
+    """Update mobile version.json with new version."""
+    try:
+        version_file = MOBILE_VERSION_JSON
+        
+        # Create or update version.json
+        data = {"version": new_version, "changelog": f"Version {new_version}"}
+        
+        if version_file.exists():
+            with open(version_file) as f:
+                data = json.load(f)
+            data["version"] = new_version
+        
+        with open(version_file, 'w') as f:
+            json.dump(data, f, indent=4)
+        
+        return True
+    except Exception as e:
+        print(f"Error updating mobile version.json: {e}")
+        return False
+
+def update_mobile_gist(version):
+    """Update the mobile Gist with new script and version."""
+    print(f"Updating mobile Gist to v{version}...")
+    
+    # Update both sms_automatisation.js and version.json to the Gist
+    result1 = subprocess.run(
+        ["gh", "gist", "edit", MOBILE_GIST_ID, "-f", "sms_automatisation.js", str(MOBILE_SCRIPT)],
+        cwd=REPO_ROOT,
+        capture_output=True, text=True
+    )
+    
+    if result1.returncode != 0:
+        print(f"Failed to update mobile script in Gist: {result1.stderr}")
+        return False
+    
+    result2 = subprocess.run(
+        ["gh", "gist", "edit", MOBILE_GIST_ID, "-f", "version.json", str(MOBILE_VERSION_JSON)],
+        cwd=REPO_ROOT,
+        capture_output=True, text=True
+    )
+    
+    if result2.returncode != 0:
+        print(f"Failed to update mobile version.json in Gist: {result2.stderr}")
+        return False
+    
+    print(f"✅ Mobile Gist updated to v{version}")
+    return True
 
 def create_github_release(version):
     """Create a GitHub release with the built app."""
@@ -195,91 +299,143 @@ def create_github_release(version):
     print(f"✅ GitHub release v{version} created successfully!")
     return True
 
-def update_gist_version(version):
+def update_gist_version(version, app_type="mac"):
     """Update the Gist with new version."""
-    print(f"Updating Gist version to {version}...")
-    
-    # Read current version.json
-    with open(VERSION_JSON) as f:
-        data = json.load(f)
-    
-    # Update Gist using gh CLI
-    gist_id = "3e89759cac04be452c935c90b5733eea"
-    
-    result = subprocess.run(
-        ["gh", "gist", "edit", gist_id, "-f", f"version.json", str(VERSION_JSON)],
-        cwd=REPO_ROOT,
-        capture_output=True, text=True
-    )
-    
-    if result.returncode != 0:
-        print(f"Failed to update Gist: {result.stderr}")
-        return False
-    
-    print(f"✅ Gist updated to v{version}")
-    return True
+    if app_type == "mac":
+        print(f"Updating Mac Gist version to {version}...")
+        
+        result = subprocess.run(
+            ["gh", "gist", "edit", MAC_GIST_ID, "-f", "version.json", str(MAC_VERSION_JSON)],
+            cwd=REPO_ROOT,
+            capture_output=True, text=True
+        )
+        
+        if result.returncode != 0:
+            print(f"Failed to update Mac Gist: {result.stderr}")
+            return False
+        
+        print(f"✅ Mac Gist updated to v{version}")
+        return True
+    else:  # mobile
+        return update_mobile_gist(version)
 
 # ============================================================================
 # COMMANDS
 # ============================================================================
 
 def cmd_check():
-    """Check if version needs bumping."""
-    if mac_app_files_changed():
-        print("mac_app files changed - version bump needed")
+    """Check if any app files changed."""
+    mac_changed = mac_app_files_changed()
+    mobile_changed = mobile_app_files_changed()
+    
+    if mac_changed:
+        print("mac_app files changed - Mac version bump needed")
+    if mobile_changed:
+        print("app/ files changed - Mobile version bump needed")
+    
+    if mac_changed or mobile_changed:
         return 0
     else:
-        print("No mac_app files changed")
+        print("No app files changed")
         return 1
 
-def cmd_bump(bump_type="patch"):
-    """Bump version and update files."""
-    current = get_local_version()
+def cmd_bump_mac(bump_type="patch"):
+    """Bump Mac app version and update files."""
+    current = get_local_version("mac")
     new_version = bump_version(current, bump_type)
     
-    print(f"Bumping version: {current} -> {new_version}")
+    print(f"Bumping Mac version: {current} -> {new_version}")
     
     if update_version_json(new_version):
-        print(f"✅ Updated version.json")
+        print(f"✅ Updated mac_app/version.json")
     
     if update_python_version(new_version):
         print(f"✅ Updated sms_campaign.py")
     
     # Stage the updated files
-    subprocess.run(["git", "add", str(VERSION_JSON), str(SMS_CAMPAIGN_PY)], cwd=REPO_ROOT)
+    subprocess.run(["git", "add", str(MAC_VERSION_JSON), str(MAC_SMS_CAMPAIGN_PY)], cwd=REPO_ROOT)
     
-    print(f"✅ Version bumped to {new_version}")
+    print(f"✅ Mac version bumped to {new_version}")
     return 0
+
+def cmd_bump_mobile(bump_type="patch"):
+    """Bump Mobile app version and update files."""
+    current = get_local_version("mobile")
+    new_version = bump_version(current, bump_type)
+    
+    print(f"Bumping Mobile version: {current} -> {new_version}")
+    
+    if update_mobile_script_version(new_version):
+        print(f"✅ Updated sms_automatisation.js")
+    
+    if update_mobile_version_json(new_version):
+        print(f"✅ Updated app/version.json")
+    
+    # Stage the updated files
+    subprocess.run(["git", "add", str(MOBILE_SCRIPT), str(MOBILE_VERSION_JSON)], cwd=REPO_ROOT)
+    
+    print(f"✅ Mobile version bumped to {new_version}")
+    return 0
+
+def cmd_bump(bump_type="patch"):
+    """Bump version and update files (legacy - bumps Mac only)."""
+    return cmd_bump_mac(bump_type)
 
 def cmd_release():
-    """Create GitHub release if version is higher than remote."""
-    local_version = get_local_version()
-    remote_version = get_remote_version()
+    """Create releases for both Mac and Mobile if versions are higher than remote."""
+    result = 0
     
-    print(f"Local version: {local_version}")
-    print(f"Remote version: {remote_version}")
+    # Check Mac App
+    print("\n=== MAC APP ===")
+    mac_local = get_local_version("mac")
+    mac_remote = get_remote_version("mac")
     
-    if remote_version is None:
-        print("Could not fetch remote version, skipping release")
-        return 1
+    print(f"Mac Local version: {mac_local}")
+    print(f"Mac Remote version: {mac_remote}")
     
-    if parse_version(local_version) > parse_version(remote_version):
-        print(f"Local version {local_version} > remote {remote_version}")
+    if mac_remote is not None and parse_version(mac_local) > parse_version(mac_remote):
+        print(f"Mac version {mac_local} > remote {mac_remote}")
         
-        if create_github_release(local_version):
-            update_gist_version(local_version)
-            return 0
+        if create_github_release(mac_local):
+            update_gist_version(mac_local, "mac")
         else:
-            return 1
+            result = 1
     else:
-        print("No new version to release")
-        return 0
+        print("No new Mac version to release")
+    
+    # Check Mobile App
+    print("\n=== MOBILE APP ===")
+    mobile_local = get_local_version("mobile")
+    mobile_remote = get_remote_version("mobile")
+    
+    print(f"Mobile Local version: {mobile_local}")
+    print(f"Mobile Remote version: {mobile_remote}")
+    
+    if mobile_remote is not None and parse_version(mobile_local) > parse_version(mobile_remote):
+        print(f"Mobile version {mobile_local} > remote {mobile_remote}")
+        
+        if update_gist_version(mobile_local, "mobile"):
+            print(f"✅ Mobile app released to Gist v{mobile_local}")
+        else:
+            result = 1
+    else:
+        print("No new Mobile version to release")
+    
+    return result
 
 def cmd_auto_commit():
-    """Auto-bump version on commit if mac_app changed."""
+    """Auto-bump version on commit if app files changed."""
+    result = 0
+    
     if mac_app_files_changed():
-        return cmd_bump("patch")
-    return 0
+        print("\n=== Auto-bumping Mac version ===")
+        result |= cmd_bump_mac("patch")
+    
+    if mobile_app_files_changed():
+        print("\n=== Auto-bumping Mobile version ===")
+        result |= cmd_bump_mobile("patch")
+    
+    return result
 
 def cmd_auto_push():
     """Auto-release on push if version is higher."""
