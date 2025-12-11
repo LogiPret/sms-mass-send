@@ -178,13 +178,28 @@ def create_styled_dmg(app_path, output_dmg, volume_name="SMS Campaign"):
     subprocess.run(["hdiutil", "detach", new_mount_point, "-quiet", "-force"], capture_output=True)
     time_module.sleep(1)
     
+    # Remove output DMG if it exists (hdiutil convert doesn't have -ov flag)
+    if output_dmg.exists():
+        output_dmg.unlink()
+    
+    # hdiutil adds .dmg extension automatically, so strip it if present
+    output_path = str(output_dmg)
+    if output_path.endswith('.dmg'):
+        output_path = output_path[:-4]
+    
     # Convert to compressed read-only DMG with proper volume name
-    subprocess.run([
+    convert_result = subprocess.run([
         "hdiutil", "convert", str(temp_dmg),
         "-format", "UDZO",
         "-imagekey", "zlib-level=9",
-        "-o", str(output_dmg)
-    ], check=True, capture_output=True)
+        "-o", output_path
+    ], capture_output=True, text=True)
+    
+    if convert_result.returncode != 0:
+        print(f"DMG convert failed: {convert_result.stderr}")
+        # Cleanup and fall back to basic
+        subprocess.run(["rm", "-rf", str(temp_dir)])
+        return create_basic_dmg(app_path, output_dmg, volume_name)
     
     # Cleanup
     subprocess.run(["rm", "-rf", str(temp_dir)])
