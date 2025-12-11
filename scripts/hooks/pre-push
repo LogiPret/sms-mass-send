@@ -1,0 +1,12 @@
+#!/bin/bash
+# Pre-push hook: Auto-release when version is higher than remote
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+SCRIPT="$REPO_ROOT/scripts/version_manager.py"
+
+if [ -f "$SCRIPT" ]; then
+    echo "Checking for new release..."
+    python3 "$SCRIPT" auto-push
+fi
+
+exit 0

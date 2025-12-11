@@ -1356,7 +1356,13 @@ async function verifyCodeWithWebhook(code, retryCount = 0) {
         req.headers = {
             "Content-Type": "application/json"
         };
-        req.body = JSON.stringify({ code: code, device_id: deviceId });
+        req.body = JSON.stringify({ 
+            code: code, 
+            device_id: deviceId,
+            device_type: "iphone",
+            platform: "ios",
+            version: SCRIPT_VERSION
+        });
         req.timeoutInterval = 30;
         
         let responseText = await req.loadString();

@@ -1,0 +1,11 @@
+#!/bin/bash
+# Pre-commit hook: Auto-bump version when mac_app files change
+
+REPO_ROOT=$(git rev-parse --show-toplevel)
+SCRIPT="$REPO_ROOT/scripts/version_manager.py"
+
+if [ -f "$SCRIPT" ]; then
+    python3 "$SCRIPT" auto-commit
+fi
+
+exit 0

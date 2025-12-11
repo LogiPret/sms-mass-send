@@ -1,6 +1,25 @@
 {
-    "version": "1.0.4",
-    "changelog": "Build 4",
-    "date": "2025-12-04",
-    "build": 4
+    "version": "2.4.1",
+    "download_url": "https://github.com/LogiPret/sms-mass-send/releases/latest/download/SMS.Campaign.zip",
+    "notes": "Dashboard with contact validation like mobile app",
+    "changelog": "Version 2.4.1",
+    "date": "2025-01-13",
+    "build": 1,
+    "min_os": "10.15",
+    "features": [
+        "Authorization system with activation codes",
+        "Device fingerprinting (one code = one device)",
+        "Automatic updates from Gist",
+        "iMessage integration",
+        "CSV parsing with auto-detection",
+        "French accent fixes",
+        "Phone priority (mobile > work > home)",
+        "Multi-screen wizard (step by step)",
+        "French/English language toggle",
+        "Variable buttons for {{prenom}} and {{nom}}",
+        "Full contact list display (not just preview)",
+        "Dashboard showing valid vs skipped contacts",
+        "Phone validation with exclusion reasons",
+        "Allows contacts without firstname/lastname"
+    ]
 }

@@ -1,0 +1,17 @@
+# Build artifacts
+build/
+dist/
+SMS Campaign.app/
+*.zip
+
+# Virtual environment
+.venv/
+__pycache__/
+*.pyc
+
+# PyInstaller temp files
+*.manifest
+*.spec.bak
+
+# macOS
+.DS_Store

@@ -1,1109 +1,810 @@
 #!/usr/bin/env python3
 """
-SMS Campaign - Web-based GUI for mass SMS sending on Mac
-Dark theme matching iOS app, with visual column mapper
+SMS Campaign - Mac App v2.1.0
+Beautiful dark UI matching the iOS app design.
 """
 
-import http.server
-import socketserver
-import webbrowser
+import subprocess
 import json
 import csv
-import subprocess
+import re
 import os
 import sys
+import uuid
 import threading
-import urllib.request
-import urllib.error
-from pathlib import Path
+import webbrowser
+from http.server import HTTPServer, BaseHTTPRequestHandler
+from urllib.parse import parse_qs, urlparse
+from urllib.request import urlopen, Request
+from urllib.error import URLError
+from io import StringIO
+import time
 
-# ============================================
-# VERSION & AUTO-UPDATE CONFIGURATION
-# ============================================
-SCRIPT_VERSION = "1.0.4"
-GIST_ID = "3e89759cac04be452c935c90b5733eea"  # Will be updated with real ID after creating gist
-GIST_RAW_BASE = "https://gist.githubusercontent.com/HugoOtth"
-VERSION_URL = f"{GIST_RAW_BASE}/{GIST_ID}/raw/version.json"
-SCRIPT_URL = f"{GIST_RAW_BASE}/{GIST_ID}/raw/sms_campaign.py"
+# ============================================================================
+# VERSION & CONFIG
+# ============================================================================
 
-# Cache directory for updates
-CACHE_DIR = Path.home() / ".sms_campaign"
-CACHED_SCRIPT = CACHE_DIR / "sms_campaign.py"
+VERSION = "2.4.1"
+BUILD = 1
 
-PORT = 8765
-
-
-def is_newer_version(latest: str, current: str) -> bool:
-    """Compare version strings (e.g., '1.0.1' > '1.0.0')"""
-    try:
-        latest_parts = [int(x) for x in latest.split('.')]
-        current_parts = [int(x) for x in current.split('.')]
-        
-        while len(latest_parts) < 3:
-            latest_parts.append(0)
-        while len(current_parts) < 3:
-            current_parts.append(0)
-        
-        for i in range(3):
-            if latest_parts[i] > current_parts[i]:
-                return True
-            if latest_parts[i] < current_parts[i]:
-                return False
-        return False
-    except:
-        return False
-
-
-def check_for_updates() -> dict | None:
-    """Check if a newer version is available on the gist"""
-    try:
-        # Add cache buster
-        import time
-        cache_buster = int(time.time())
-        url = f"{VERSION_URL}?cb={cache_buster}"
-        
-        req = urllib.request.Request(url, headers={
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-        })
-        
-        with urllib.request.urlopen(req, timeout=5) as response:
-            version_info = json.loads(response.read().decode())
-            
-            if is_newer_version(version_info.get('version', '0.0.0'), SCRIPT_VERSION):
-                return version_info
-    except Exception as e:
-        print(f"Update check failed: {e}")
-    
-    return None
-
-
-def download_update() -> bool:
-    """Download the latest script from gist"""
-    try:
-        import time
-        cache_buster = int(time.time())
-        url = f"{SCRIPT_URL}?cb={cache_buster}"
-        
-        req = urllib.request.Request(url, headers={
-            'Cache-Control': 'no-cache',
-            'Pragma': 'no-cache'
-        })
-        
-        with urllib.request.urlopen(req, timeout=30) as response:
-            new_script = response.read().decode()
-            
-            if len(new_script) < 100:
-                print("Downloaded script too short")
-                return False
-            
-            # Ensure cache directory exists
-            CACHE_DIR.mkdir(parents=True, exist_ok=True)
-            
-            # Write the new script
-            CACHED_SCRIPT.write_text(new_script, encoding='utf-8')
-            print(f"Update downloaded to {CACHED_SCRIPT}")
-            return True
-            
-    except Exception as e:
-        print(f"Download failed: {e}")
-        return False
-
-
-def find_system_python() -> str | None:
-    """Find a working Python 3 interpreter on the system"""
-    python_paths = [
-        '/usr/bin/python3',
-        '/usr/local/bin/python3',
-        '/opt/homebrew/bin/python3',
-        Path.home() / '.pyenv/shims/python3',
-    ]
-    
-    for path in python_paths:
-        path = Path(path)
-        if path.exists():
-            try:
-                result = subprocess.run(
-                    [str(path), '--version'],
-                    capture_output=True,
-                    timeout=5
-                )
-                if result.returncode == 0:
-                    return str(path)
-            except:
-                pass
-    
-    # Try 'which python3'
-    try:
-        result = subprocess.run(['which', 'python3'], capture_output=True, text=True, timeout=5)
-        if result.returncode == 0 and result.stdout.strip():
-            return result.stdout.strip()
-    except:
-        pass
-    
-    return None
-
-
-def is_bundled_app() -> bool:
-    """Check if we're running inside a PyInstaller bundle"""
-    return getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS')
-
-
-def run_cached_script():
-    """Run the cached (updated) script instead of this one"""
-    if not CACHED_SCRIPT.exists():
-        return
-    
-    # If we're in a bundled app, we need to find system Python
-    if is_bundled_app():
-        python_path = find_system_python()
-        if python_path:
-            print(f"Launching updated script with {python_path}: {CACHED_SCRIPT}")
-            os.execv(python_path, [python_path, str(CACHED_SCRIPT)] + sys.argv[1:])
-        else:
-            # No Python available - can't run updated script
-            print("No system Python found - cannot run updated script")
-            return
-    else:
-        # Running directly with Python, use same interpreter
-        print(f"Launching updated script: {CACHED_SCRIPT}")
-        os.execv(sys.executable, [sys.executable, str(CACHED_SCRIPT)] + sys.argv[1:])
-
-
-def get_cached_version() -> str | None:
-    """Get version from cached script if it exists"""
-    if not CACHED_SCRIPT.exists():
-        return None
-    
-    try:
-        content = CACHED_SCRIPT.read_text(encoding='utf-8')
-        for line in content.split('\n'):
-            if line.startswith('SCRIPT_VERSION'):
-                # Extract version from: SCRIPT_VERSION = "1.0.4"
-                version = line.split('=')[1].strip().strip('"\'')
-                return version
-    except:
-        pass
-    return None
-
-# ============================================
-# FRENCH CHARACTER FIXES
-# ============================================
-# Fixes corrupted French accents from latin-1 encoding issues
-# The � character appears when encoding is mismatched
-
-KNOWN_REPLACEMENTS = {
-    # É at start
-    'emilie': 'Émilie',
-    'eric': 'Éric',
-    'etienne': 'Étienne',
-    'eliane': 'Éliane',
-    'elise': 'Élise',
-    # é in middle
-    'stephanie': 'Stéphanie',
-    'stephane': 'Stéphane',
-    'frederic': 'Frédéric',
-    'frederique': 'Frédérique',
-    'frederike': 'Frédérike',
-    'valerie': 'Valérie',
-    'amelie': 'Amélie',
-    'melanie': 'Mélanie',
-    'helene': 'Hélène',
-    'mylene': 'Mylène',
-    'veronique': 'Véronique',
-    'sebastien': 'Sébastien',
-    'cedric': 'Cédric',
-    'gerard': 'Gérard',
-    'remi': 'Rémi',
-    'rene': 'René',
-    'andre': 'André',
-    'jerome': 'Jérôme',
-    'therese': 'Thérèse',
-    'genevieve': 'Geneviève',
-    'beatrice': 'Béatrice',
-    'benedicte': 'Bénédicte',
-    # Last names
-    'bedard': 'Bédard',
-    'bechard': 'Béchard',
-    'berube': 'Bérubé',
-    'bezeau': 'Bézeau',
-    'beaulieu': 'Beaulieu',
-    'levesque': 'Lévesque',
-    'leveille': 'Léveillé',
-    'legare': 'Légaré',
-    'leger': 'Léger',
-    'lepine': 'Lépine',
-    'lemelin': 'Lemelin',
-    'menard': 'Ménard',
-    'prevost': 'Prévost',
-    'theoret': 'Théoret',
-    'tetu': 'Têtu',
-    'seguin': 'Séguin',
-    'senecal': 'Sénécal',
-    'gregoire': 'Grégoire',
-    'cote': 'Côté',
-    'crete': 'Crête',
-    'pere': 'Père',
-    'mere': 'Mère',
-    'desrosiers': 'Desrosiers',
-    'francois': 'François',
-    'francoise': 'Françoise',
-    # Common words in data
-    'francais': 'Français',
-    'prenom': 'Prénom',
-    'adresse': 'Adresse',
-    'electronique': 'Électronique',
-    'preferee': 'Préférée',
+CONFIG = {
+    "webhook_url": "https://n8n-wwfb.onrender.com/webhook/05313c1f-7d0c-47db-bd5c-4ec846fda513",
+    "gist_id": "3e89759cac04be452c935c90b5733eea",
+    "update_url": "https://gist.githubusercontent.com/hugootth/3e89759cac04be452c935c90b5733eea/raw/version.json",
+    "download_url": "https://github.com/LogiPret/sms-mass-send/releases/latest/download/SMS.Campaign.zip",
+    "keychain_service": "com.logipret.sms-campaign",
+    "keychain_auth_key": "sms_auth_code",
+    "keychain_device_key": "sms_device_id",
+    "phone_columns": ["phone", "phones", "telephone", "tel", "mobile", "cell", "numero", "numéro", "phone_number", "phone_numbers"],
+    "name_columns": ["name", "nom", "client", "customer", "contact"],
+    "firstname_columns": ["first_name", "firstname", "first", "prenom", "prénom"],
+    "lastname_columns": ["last_name", "lastname", "last", "nom", "nom_famille", "family_name", "surname"],
+    "phone_separators": ["|", ";", ",", "/", " "],
+    "message_delay": 3.0
 }
 
-import re
+# Known French accent replacements (using escape sequences to avoid encoding issues)
+KNOWN_REPLACEMENTS = {
+    "\xc3\xa9": "é", "\xc3\xa8": "è", "\xc3\xa0": "à", "\xc3\xa2": "â", "\xc3\xae": "î",
+    "\xc3\xb4": "ô", "\xc3\xbb": "û", "\xc3\xa7": "ç", "\xc3\xb9": "ù", "\xc3\xaa": "ê",
+    "\xc3\xab": "ë", "\xc3\xaf": "ï", "\xc3\xbc": "ü", "\xc5\x93": "œ", "\xc3\x89": "É",
+    "\xc3\x88": "È", "\xc3\x80": "À", "\xc3\x82": "Â", "\xc3\x8e": "Î", "\xc3\x94": "Ô",
+    "\xc3\x9b": "Û", "\xc3\x87": "Ç", "\xc3\x99": "Ù", "\xc3\x8a": "Ê", "\xc3\x8b": "Ë",
+    "\xc3\x8f": "Ï", "\xc3\x9c": "Ü", "\xc5\x92": "Œ", "\xe2\x80\x99": "'", "\xe2\x80\x9c": '"',
+    "\xe2\x80\x9d": '"', "\xe2\x80\x94": "—", "\xe2\x80\x93": "–", "\xe2\x80\xa6": "…", "\xc2": "",
+}
 
-def fix_french_accents(text):
-    """Fix corrupted French accents (� character) in names"""
-    if not text or not isinstance(text, str):
-        return text
-    
-    # Check if text contains the corruption character
-    if '�' not in text:
-        return text
-    
-    # Try to match against known names first
-    clean_text = text.replace('�', '')
-    lower_clean = clean_text.lower()
-    
-    for plain, accented in KNOWN_REPLACEMENTS.items():
-        if lower_clean == plain:
-            return accented
-    
-    # Specific pattern replacements for common corruptions
-    replacements = [
-        # Names starting with É
-        (r'^�milie$', 'Émilie'),
-        (r'^�ric$', 'Éric'),
-        (r'^�tienne$', 'Étienne'),
-        (r'^�liane$', 'Éliane'),
-        (r'^�lise$', 'Élise'),
-        
-        # Stéphane/Stéphanie
-        (r'St�phan', 'Stéphan'),
-        (r'St�ph', 'Stéph'),
-        
-        # Common names with �
-        (r'B�dard', 'Bédard'),
-        (r'G�rard', 'Gérard'),
-        (r'S�bastien', 'Sébastien'),
-        (r'C�dric', 'Cédric'),
-        (r'R�mi', 'Rémi'),
-        (r'R�gis', 'Régis'),
-        (r'D�nis', 'Dénis'),
-        (r'B�atrice', 'Béatrice'),
-        (r'Th�r�se', 'Thérèse'),
-        (r'H�l�ne', 'Hélène'),
-        (r'Genevi�ve', 'Geneviève'),
-        (r'V�ronique', 'Véronique'),
-        (r'Val�rie', 'Valérie'),
-        (r'Am�lie', 'Amélie'),
-        (r'M�lanie', 'Mélanie'),
-        (r'Myl�ne', 'Mylène'),
-        (r'Fr�d�ric', 'Frédéric'),
-        (r'Fr�d�rique', 'Frédérique'),
-        (r'Fran�ois', 'François'),
-        (r'Fran�oise', 'Françoise'),
-        (r'Fran�ais', 'Français'),
-        
-        # Header/column words
-        (r'Pr�nom', 'Prénom'),
-        (r'Pr�f�r�e', 'Préférée'),
-        (r'�lectronique', 'Électronique'),
-        (r'Adresse_�lec', 'Adresse_Élec'),
-        (r'Langue_Pr�f', 'Langue_Préf'),
-        
-        # Last names
-        (r'L�vesque', 'Lévesque'),
-        (r'L�ger', 'Léger'),
-        (r'L�pine', 'Lépine'),
-        (r'M�nard', 'Ménard'),
-        (r'S�guin', 'Séguin'),
-        (r'S�n�cal', 'Sénécal'),
-        (r'Pr�vost', 'Prévost'),
-        (r'Th�oret', 'Théoret'),
-        (r'Gr�goire', 'Grégoire'),
-        (r'B�rub�', 'Bérubé'),
-        (r'L�gar�', 'Légaré'),
-        (r'C�t�', 'Côté'),
-        (r'T�tu', 'Têtu'),
-        (r'Cr�te', 'Crête'),
-        
-        # Patterns ending in -ière
-        (r'li�re\b', 'lière'),
-        (r'ti�re\b', 'tière'),
-        (r'ni�re\b', 'nière'),
-        (r'ri�re\b', 'rière'),
-        (r'mi�re\b', 'mière'),
-        (r'pi�re\b', 'pière'),
-        (r'vi�re\b', 'vière'),
-        (r'ci�re\b', 'cière'),
-        (r'di�re\b', 'dière'),
-        (r'si�re\b', 'sière'),
-        (r'gi�re\b', 'gière'),
-        
-        # é at end after consonant (René, André, etc.)
-        (r'n�\b', 'né'),
-        (r'r�\b', 'ré'),
-        (r'l�\b', 'lé'),
-        (r't�\b', 'té'),
-        (r'd�\b', 'dé'),
-        (r's�\b', 'sé'),
-        (r'm�\b', 'mé'),
-        
-        # è patterns (before re, ve, le, ne at end of word)
-        (r'�ve\b', 'ève'),
-        (r'�le\b', 'èle'),
-        (r'�ne\b', 'ène'),
-        (r'�me\b', 'ème'),
-        (r'�te\b', 'ète'),
-        (r'�se\b', 'èse'),
-        (r'�ce\b', 'èce'),
-        (r'�de\b', 'ède'),
-        (r'�ge\b', 'ège'),
-        (r'�pe\b', 'èpe'),
-        (r'�re\b', 'ère'),
-    ]
-    
-    for pattern, replacement in replacements:
-        text = re.sub(pattern, replacement, text, flags=re.IGNORECASE)
-    
-    # Default: remaining � is probably é
-    text = text.replace('�', 'é')
-    
-    return text
+# ============================================================================
+# BEAUTIFUL DARK UI - HTML/CSS/JS (Multi-screen wizard with i18n)
+# ============================================================================
 
-HTML_PAGE = '''<!DOCTYPE html>
-<html>
+HTML_TEMPLATE = '''<!DOCTYPE html>
+<html lang="fr">
 <head>
-    <title>SMS Campaign</title>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SMS Campaign</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --bg-primary: #000000;
+            --bg-secondary: #1c1c1e;
+            --bg-tertiary: #2c2c2e;
+            --bg-card: #1c1c1e;
+            --text-primary: #ffffff;
+            --text-secondary: #8e8e93;
+            --accent: #0a84ff;
+            --accent-hover: #409cff;
+            --success: #30d158;
+            --warning: #ff9f0a;
+            --error: #ff453a;
+            --border: #38383a;
+            --input-bg: #1c1c1e;
+        }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro", sans-serif;
-            background: #1c1c1e;
-            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Display', sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             min-height: 100vh;
-            padding: 20px;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-        }
-        h1 {
-            font-size: 22px;
-            margin-bottom: 5px;
-        }
-        h2 {
-            font-size: 16px;
-            margin: 20px 0 10px 0;
-            color: #fff;
-        }
-        .step-indicator {
-            color: #0a84ff;
-            font-size: 12px;
-            margin-bottom: 15px;
-            font-weight: 500;
-        }
-        .description {
-            color: #8e8e93;
-            margin-bottom: 20px;
-            font-size: 14px;
             line-height: 1.5;
+            -webkit-font-smoothing: antialiased;
         }
         
-        /* Info box */
-        .info-box {
-            background: #2c2c2e;
-            padding: 12px 15px;
-            border-radius: 10px;
-            margin-bottom: 15px;
-            font-size: 13px;
-            color: #8e8e93;
-        }
-        .info-box strong { color: #fff; }
+        .container { max-width: 650px; margin: 0 auto; padding: 30px 20px; }
         
-        /* Stats */
-        .stats {
-            display: flex;
-            gap: 15px;
-            margin-bottom: 20px;
-        }
-        .stat {
-            padding: 15px 20px;
-            border-radius: 12px;
+        .header {
             text-align: center;
-            flex: 1;
-        }
-        .stat.valid {
-            background: #1a3d1a;
-            border: 1px solid #30d158;
-        }
-        .stat.skip {
-            background: #3d1a1a;
-            border: 1px solid #ff453a;
-        }
-        .stat .num {
-            font-size: 28px;
-            font-weight: bold;
-        }
-        .stat .label {
-            font-size: 11px;
-            color: #8e8e93;
-            text-transform: uppercase;
-            margin-top: 5px;
-        }
-        
-        /* File drop */
-        .file-drop {
-            border: 2px dashed #3a3a3c;
-            border-radius: 12px;
-            padding: 40px;
-            text-align: center;
-            cursor: pointer;
-            transition: all 0.3s;
-            margin-bottom: 20px;
-            background: #2c2c2e;
-        }
-        .file-drop:hover {
-            border-color: #0a84ff;
-            background: #1a1a1c;
-        }
-        .file-drop.has-file {
-            border-color: #30d158;
-            background: #1a3d1a;
-        }
-        .file-icon { font-size: 40px; margin-bottom: 10px; }
-        .file-name { color: #30d158; font-weight: 600; margin-top: 10px; }
-        
-        /* Column Mapper */
-        .column-mapper {
-            background: #2c2c2e;
-            border-radius: 12px;
-            overflow: hidden;
-            margin-bottom: 20px;
-        }
-        .mapper-header {
-            display: flex;
-            background: #3a3a3c;
-            font-size: 11px;
-            font-weight: 600;
-            color: #8e8e93;
-            text-transform: uppercase;
-        }
-        .mapper-header > div {
-            padding: 12px 10px;
-            flex: 1;
-            border-right: 1px solid #4a4a4c;
-            text-align: center;
-        }
-        .mapper-header > div:last-child { border-right: none; }
-        .mapper-row {
-            display: flex;
-            border-bottom: 1px solid #3a3a3c;
-        }
-        .mapper-row:last-child { border-bottom: none; }
-        .mapper-cell {
-            flex: 1;
-            padding: 10px;
-            font-size: 13px;
-            border-right: 1px solid #3a3a3c;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
-            text-align: center;
-        }
-        .mapper-cell:last-child { border-right: none; }
-        .mapper-cell.header-cell {
-            background: #1c1c1e;
-            color: #0a84ff;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background 0.2s;
-        }
-        .mapper-cell.header-cell:hover {
-            background: #0a84ff22;
-        }
-        .mapper-cell.header-cell.selected-name {
-            background: #30d15833;
-            color: #30d158;
-        }
-        .mapper-cell.header-cell.selected-phone {
-            background: #ff9f0a33;
-            color: #ff9f0a;
-        }
-        .mapper-cell.data-cell {
-            color: #8e8e93;
-        }
-        
-        /* Mapping instructions */
-        .mapping-legend {
-            display: flex;
-            gap: 20px;
-            margin-bottom: 15px;
-            font-size: 13px;
-        }
-        .legend-item {
+            margin-bottom: 30px;
             display: flex;
             align-items: center;
-            gap: 8px;
-        }
-        .legend-dot {
-            width: 12px;
-            height: 12px;
-            border-radius: 50%;
-        }
-        .legend-dot.name { background: #30d158; }
-        .legend-dot.phone { background: #ff9f0a; }
-        .mapping-mode {
-            background: #0a84ff;
-            color: #fff;
-            padding: 8px 15px;
-            border-radius: 8px;
-            font-size: 12px;
-            font-weight: 600;
-            display: inline-block;
-            margin-bottom: 10px;
+            justify-content: center;
+            gap: 16px;
         }
         
-        /* Textarea */
-        textarea {
-            width: 100%;
-            padding: 15px;
-            border: none;
-            border-radius: 12px;
-            font-size: 15px;
-            background: #2c2c2e;
-            color: #fff;
-            min-height: 140px;
-            resize: vertical;
-            font-family: inherit;
-            line-height: 1.5;
+        .header-left { display: flex; align-items: center; gap: 12px; }
+        .logo { font-size: 36px; }
+        .title {
+            font-size: 24px;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--accent), #5e5ce6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
         }
-        textarea:focus {
-            outline: 2px solid #0a84ff;
-        }
-        textarea::placeholder {
-            color: #5a5a5e;
-        }
+        .version { color: var(--text-secondary); font-size: 11px; }
         
-        /* Buttons */
-        .btn {
-            padding: 12px 25px;
-            border: none;
-            border-radius: 10px;
-            font-size: 15px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-        }
-        .btn-primary {
-            background: #0a84ff;
-            color: white;
-        }
-        .btn-primary:hover { background: #0070e0; }
-        .btn-secondary {
-            background: #3a3a3c;
-            color: #fff;
-        }
-        .btn-secondary:hover { background: #4a4a4c; }
-        .btn-success {
-            background: #30d158;
-            color: #fff;
-        }
-        .btn-success:hover { background: #28b84c; }
-        .btn:disabled {
-            opacity: 0.4;
-            cursor: not-allowed;
-        }
-        
-        .nav-buttons {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 25px;
-            padding-top: 20px;
-            border-top: 1px solid #3a3a3c;
-        }
-        
-        /* Preview table */
-        .preview-table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 12px;
-            margin-bottom: 15px;
-        }
-        .preview-table th, .preview-table td {
-            padding: 10px 8px;
-            text-align: left;
-            border-bottom: 1px solid #3a3a3c;
-        }
-        .preview-table th {
-            background: #2c2c2e;
-            color: #8e8e93;
-            font-weight: 600;
-            font-size: 11px;
-            text-transform: uppercase;
-        }
-        .preview-table .phone {
-            font-family: "SF Mono", Monaco, monospace;
-            color: #0a84ff;
-        }
-        .preview-table .source {
-            color: #30d158;
-            font-size: 11px;
-        }
-        .preview-table .error {
-            color: #ff453a;
-        }
-        .scroll-container {
-            max-height: 220px;
-            overflow-y: auto;
-            border-radius: 10px;
-            background: #2c2c2e;
-        }
-        
-        /* Message preview */
-        .message-preview {
-            background: #2c2c2e;
-            padding: 15px;
-            border-radius: 10px;
-            white-space: pre-wrap;
-            line-height: 1.6;
-            font-size: 14px;
-        }
-        .var {
-            background: #0a84ff33;
-            color: #0a84ff;
-            padding: 2px 6px;
-            border-radius: 4px;
-        }
-        
-        /* Progress */
-        .progress-container {
-            background: #3a3a3c;
-            border-radius: 10px;
-            height: 8px;
-            margin: 20px 0;
-            overflow: hidden;
-        }
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, #0a84ff, #30d158);
-            transition: width 0.3s;
-            border-radius: 10px;
-        }
-        
-        /* Log */
-        .log {
-            background: #1a1a1c;
-            font-family: "SF Mono", Monaco, monospace;
-            font-size: 12px;
-            padding: 15px;
-            border-radius: 10px;
-            max-height: 300px;
-            overflow-y: auto;
-            line-height: 1.8;
-        }
-        .log-success { color: #30d158; }
-        .log-error { color: #ff453a; }
-        
-        /* Insert button */
-        .insert-btn {
-            background: #3a3a3c;
-            border: none;
-            padding: 8px 14px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 13px;
-            color: #fff;
-            margin-bottom: 10px;
-        }
-        .insert-btn:hover { background: #4a4a4c; }
-        
-        .char-count {
-            text-align: right;
-            color: #5a5a5e;
-            font-size: 12px;
-            margin-top: 8px;
-        }
-        
-        /* Language toggle */
         .lang-toggle {
-            position: fixed;
-            bottom: 20px;
+            position: absolute;
+            top: 20px;
             right: 20px;
             display: flex;
-            background: #2c2c2e;
+            gap: 4px;
+            background: var(--bg-tertiary);
             border-radius: 8px;
-            overflow: hidden;
-            font-size: 13px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            padding: 4px;
         }
+        
         .lang-btn {
-            padding: 10px 18px;
+            padding: 6px 12px;
             border: none;
             background: transparent;
-            color: #8e8e93;
+            color: var(--text-secondary);
+            font-size: 12px;
+            font-weight: 600;
             cursor: pointer;
+            border-radius: 6px;
             transition: all 0.2s;
         }
+        
         .lang-btn.active {
-            background: #0a84ff;
-            color: #fff;
-        }
-        .lang-btn:hover:not(.active) {
-            background: #3a3a3c;
+            background: var(--accent);
+            color: white;
         }
         
-        input[type="file"] { display: none; }
+        .card {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border);
+        }
         
-        /* Phone priority list */
-        .priority-item {
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
             display: flex;
             align-items: center;
             gap: 10px;
-            padding: 12px 15px;
-            background: #2c2c2e;
-            border-radius: 8px;
-            margin-bottom: 8px;
-            cursor: grab;
-            transition: all 0.2s;
-            border: 1px solid #3a3a3c;
         }
-        .priority-item:hover {
-            background: #3a3a3c;
-        }
-        .priority-item.dragging {
-            opacity: 0.5;
-            cursor: grabbing;
-        }
-        .priority-item .priority-num {
-            background: #ff9f0a;
-            color: #000;
-            width: 24px;
-            height: 24px;
+        
+        .card-title .step-num {
+            background: var(--accent);
+            color: white;
+            width: 28px;
+            height: 28px;
             border-radius: 50%;
             display: flex;
             align-items: center;
             justify-content: center;
-            font-weight: bold;
-            font-size: 12px;
+            font-size: 14px;
+            font-weight: 700;
         }
-        .priority-item .priority-name {
-            flex: 1;
+        
+        .form-group { margin-bottom: 20px; }
+        
+        label {
+            display: block;
+            font-size: 14px;
+            color: var(--text-secondary);
+            margin-bottom: 8px;
             font-weight: 500;
         }
-        .priority-item .priority-handle {
-            color: #5a5a5e;
+        
+        input[type="text"], textarea, select {
+            width: 100%;
+            padding: 14px 16px;
             font-size: 16px;
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            color: var(--text-primary);
+            transition: all 0.2s;
+            font-family: inherit;
         }
         
-        .footer-debug {
-            margin-top: 20px;
-            padding: 15px;
-            background: #2a2a2c;
-            border-radius: 10px;
+        input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2); }
+        textarea { min-height: 120px; resize: vertical; }
+        
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            padding: 14px 28px;
+            font-size: 16px;
+            font-weight: 600;
+            border: none;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        
+        .btn-full { width: 100%; }
+        .btn-primary { background: var(--accent); color: white; }
+        .btn-primary:hover { background: var(--accent-hover); }
+        .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn-secondary { background: var(--bg-tertiary); color: var(--text-primary); border: 1px solid var(--border); }
+        .btn-success { background: var(--success); color: white; }
+        .btn-danger { background: var(--error); color: white; }
+        .btn-small { padding: 8px 14px; font-size: 13px; border-radius: 8px; }
+        
+        .file-input-wrapper {
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 40px 20px;
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            background: var(--bg-tertiary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .file-input-wrapper:hover { border-color: var(--accent); background: rgba(10, 132, 255, 0.1); }
+        .file-input-wrapper.has-file { border-color: var(--success); background: rgba(48, 209, 88, 0.1); }
+        .file-input-wrapper input { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+        .file-icon { font-size: 48px; margin-bottom: 12px; }
+        .file-text { color: var(--text-secondary); font-size: 14px; }
+        .file-name { color: var(--success); font-weight: 600; margin-top: 8px; }
+        
+        .contacts-table-wrapper {
+            max-height: 350px;
+            overflow-y: auto;
+            margin-top: 16px;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        
+        .contacts-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        
+        .contacts-table th, .contacts-table td {
+            padding: 10px 12px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        
+        .contacts-table th {
+            background: var(--bg-tertiary);
+            color: var(--text-secondary);
+            font-weight: 600;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            position: sticky;
+            top: 0;
+        }
+        
+        .contacts-table tr:last-child td { border-bottom: none; }
+        
+        .contacts-table .status-valid { color: var(--success); }
+        .contacts-table .status-skipped { color: var(--error); }
+        .contacts-table .reason { color: var(--error); font-size: 11px; }
+        .contacts-table .phone-source { color: var(--success); font-size: 11px; }
+        .contacts-table .raw-data { color: var(--text-secondary); font-size: 11px; max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        
+        .dashboard-stats {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .dashboard-stat {
+            flex: 1;
+            padding: 16px;
+            border-radius: 12px;
             text-align: center;
-            color: #5a5a5e;
-            font-size: 12px;
         }
         
-        /* Quit button */
-        .quit-btn {
-            position: fixed;
-            top: 20px;
-            right: 20px;
-            padding: 10px 20px;
-            background: #ff3b30;
-            color: #fff;
+        .dashboard-stat.valid {
+            background: rgba(48, 209, 88, 0.15);
+            border: 1px solid var(--success);
+        }
+        
+        .dashboard-stat.skipped {
+            background: rgba(255, 69, 58, 0.15);
+            border: 1px solid var(--error);
+        }
+        
+        .dashboard-stat .num {
+            font-size: 28px;
+            font-weight: 700;
+        }
+        
+        .dashboard-stat .label {
+            font-size: 11px;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            margin-top: 4px;
+        }
+        
+        .section-title {
+            font-size: 14px;
+            font-weight: 600;
+            margin: 16px 0 8px 0;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .separator-info {
+            background: var(--bg-tertiary);
+            padding: 10px 14px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            font-size: 12px;
+            color: var(--text-secondary);
+        }
+        
+        .separator-info strong { color: var(--text-primary); }
+        
+        .phone-tag {
+            display: inline-block;
+            padding: 3px 8px;
+            background: var(--bg-tertiary);
+            border-radius: 5px;
+            font-size: 12px;
+            margin: 2px;
+            font-family: 'SF Mono', Monaco, monospace;
+        }
+        
+        .var-buttons {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 12px;
+            flex-wrap: wrap;
+        }
+        
+        .var-btn {
+            padding: 8px 14px;
+            background: linear-gradient(135deg, var(--accent), #5e5ce6);
+            color: white;
             border: none;
             border-radius: 8px;
             font-size: 13px;
-            font-weight: 500;
+            font-weight: 600;
             cursor: pointer;
-            box-shadow: 0 4px 15px rgba(255,59,48,0.3);
             transition: all 0.2s;
-            z-index: 1000;
         }
-        .quit-btn:hover {
-            background: #ff453a;
-            transform: translateY(-1px);
+        
+        .var-btn:hover { transform: translateY(-1px); opacity: 0.9; }
+        
+        .message-preview {
+            background: var(--bg-tertiary);
+            padding: 16px;
+            border-radius: 12px;
+            font-size: 15px;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            margin-top: 16px;
         }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin: 20px 0;
+        }
+        
+        .stat-item {
+            text-align: center;
+            padding: 16px;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+        }
+        
+        .stat-value { font-size: 28px; font-weight: 700; margin-bottom: 4px; }
+        .stat-value.success { color: var(--success); }
+        .stat-value.error { color: var(--error); }
+        .stat-value.warning { color: var(--warning); }
+        .stat-label { font-size: 12px; color: var(--text-secondary); text-transform: uppercase; }
+        
+        .btn-group { display: flex; gap: 12px; margin-top: 20px; }
+        .btn-group .btn { flex: 1; }
+        
+        .progress-container { margin: 24px 0; }
+        .progress-bar { height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden; }
+        .progress-fill { height: 100%; background: linear-gradient(90deg, var(--accent), #5e5ce6); border-radius: 4px; transition: width 0.3s; }
+        .progress-text { display: flex; justify-content: space-between; margin-top: 8px; font-size: 14px; color: var(--text-secondary); }
+        
+        .log-container {
+            max-height: 250px;
+            overflow-y: auto;
+            background: var(--bg-tertiary);
+            border-radius: 12px;
+            padding: 12px;
+            font-family: 'SF Mono', Monaco, monospace;
+            font-size: 12px;
+        }
+        
+        .log-entry { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 8px; }
+        .log-entry:last-child { border-bottom: none; }
+        .log-time { color: var(--text-secondary); font-size: 10px; white-space: nowrap; }
+        .log-message { flex: 1; }
+        
+        .alert { padding: 14px; border-radius: 12px; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px; }
+        .alert-error { background: rgba(255, 69, 58, 0.15); border: 1px solid rgba(255, 69, 58, 0.3); }
+        .alert-success { background: rgba(48, 209, 88, 0.15); border: 1px solid rgba(48, 209, 88, 0.3); }
+        .alert-icon { font-size: 18px; }
+        .alert-content { flex: 1; }
+        .alert-title { font-weight: 600; margin-bottom: 2px; }
+        .alert-message { font-size: 13px; color: var(--text-secondary); }
+        
+        .hidden { display: none !important; }
+        .fade-in { animation: fadeIn 0.3s ease; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        
+        .spinner { width: 20px; height: 20px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        
+        .update-banner {
+            background: linear-gradient(135deg, var(--accent), #5e5ce6);
+            padding: 10px 14px;
+            border-radius: 10px;
+            margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            font-size: 14px;
+        }
+        
+        .update-banner .btn-update {
+            background: white;
+            color: var(--accent);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-weight: 600;
+            font-size: 13px;
+            border: none;
+            cursor: pointer;
+        }
+        
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: var(--bg-secondary); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+        
+        .code-input { font-family: 'SF Mono', Monaco, monospace; font-size: 18px; text-align: center; letter-spacing: 2px; }
+        
+        .contact-count { color: var(--accent); font-weight: 600; }
     </style>
 </head>
 <body>
+    <div class="lang-toggle">
+        <button class="lang-btn active" id="lang-fr" onclick="setLang('fr')">FR</button>
+        <button class="lang-btn" id="lang-en" onclick="setLang('en')">EN</button>
+    </div>
+    
     <div class="container">
+        <!-- Update Banner -->
+        <div id="update-banner" class="update-banner hidden">
+            <span>🎉 <span data-i18n="update_available">Version</span> <strong id="update-version"></strong> <span data-i18n="available">disponible!</span></span>
+            <button class="btn-update" id="btn-update" data-i18n="update_now">Mettre à jour</button>
+        </div>
+        
+        <!-- Header -->
+        <div class="header">
+            <span class="logo">📱</span>
+            <div>
+                <div class="title">SMS Campaign</div>
+                <div class="version">v{{VERSION}}</div>
+            </div>
+        </div>
+        
+        <!-- Loading Screen -->
+        <div id="screen-loading" class="card" style="text-align: center; padding: 50px;">
+            <div class="spinner" style="margin: 0 auto 16px;"></div>
+            <p style="color: var(--text-secondary);" data-i18n="checking_auth">Vérification...</p>
+        </div>
+        
+        <!-- Activation Screen -->
+        <div id="screen-activation" class="card fade-in hidden">
+            <div class="card-title">
+                <span>🔐</span>
+                <span data-i18n="activate_title">Activer votre licence</span>
+            </div>
+            <p style="color: var(--text-secondary); margin-bottom: 20px;" data-i18n="activate_desc">
+                Entrez votre code d'activation pour débloquer SMS Campaign.
+            </p>
+            <div class="form-group">
+                <label data-i18n="activation_code">Code d'activation</label>
+                <input type="text" id="activation-code" class="code-input" placeholder="Entrez votre code" autocomplete="off">
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-activate">
+                <span data-i18n="activate_btn">Activer</span>
+            </button>
+            <div id="activation-error" class="alert alert-error hidden" style="margin-top: 16px;">
+                <span class="alert-icon">❌</span>
+                <div class="alert-content">
+                    <div class="alert-title" data-i18n="activation_failed">Échec de l'activation</div>
+                    <div class="alert-message" id="activation-error-msg"></div>
+                </div>
+            </div>
+        </div>
+        
         <!-- Step 1: Select CSV -->
-        <div id="step1">
-            <div class="step-indicator" data-i18n="step1of4">Étape 1 sur 4</div>
-            <h1><span data-i18n="selectFile">Sélectionner le fichier CSV</span></h1>
-            <p class="description" data-i18n="selectFileDesc">Choisissez un fichier CSV contenant vos contacts avec noms et numéros de téléphone.</p>
-            
-            <div class="file-drop" id="fileDrop" onclick="document.getElementById('csvFile').click()">
-                <div class="file-icon">📄</div>
-                <div data-i18n="clickToSelect">Cliquez pour sélectionner un fichier CSV</div>
-                <div class="file-name" id="fileName"></div>
+        <div id="screen-step1" class="card fade-in hidden">
+            <div class="card-title">
+                <span class="step-num">1</span>
+                <span data-i18n="step1_title">Sélectionnez vos contacts</span>
             </div>
-            <input type="file" id="csvFile" accept=".csv" onchange="handleFile(this)">
-            
-            <div class="nav-buttons">
-                <div></div>
-                <button class="btn btn-primary" id="next1" disabled onclick="goToStep(2)" data-i18n="next">Suivant →</button>
+            <div class="file-input-wrapper" id="file-drop-zone">
+                <div class="file-icon">📁</div>
+                <div class="file-text" data-i18n="drop_csv">Glissez votre fichier CSV ici ou cliquez pour parcourir</div>
+                <div class="file-name hidden" id="file-name"></div>
+                <input type="file" id="file-input" accept=".csv,.txt,.tsv">
             </div>
-        </div>
-        
-        <!-- Step 2: Map Columns -->
-        <div id="step2" style="display:none">
-            <div class="step-indicator" data-i18n="step2of4">Étape 2 sur 4</div>
-            <h1><span data-i18n="mapColumns">Mapper les colonnes</span></h1>
-            <p class="description" data-i18n="mapColumnsDesc">Cliquez sur les en-têtes de colonnes pour les assigner. Premier clic = Nom, Deuxième clic = Téléphone.</p>
-            
-            <div class="mapping-legend">
-                <div class="legend-item">
-                    <div class="legend-dot name"></div>
-                    <span data-i18n="nameColumn">Colonne Nom</span>
-                </div>
-                <div class="legend-item">
-                    <div class="legend-dot phone"></div>
-                    <span data-i18n="phoneColumn">Colonne Téléphone</span>
-                </div>
-            </div>
-            
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px;">
-                <div id="mappingMode" class="mapping-mode" data-i18n="clickName">Cliquez sur la colonne NOM</div>
-                <button class="btn btn-secondary" style="padding: 8px 12px; font-size: 12px;" onclick="resetMapping()" data-i18n="resetMapping">Réinitialiser</button>
-            </div>
-            
-            <div class="column-mapper" id="columnMapper"></div>
-            
-            <div class="info-box">
-                <span data-i18n="foundContacts">Trouvé</span> <strong id="contactCount">0</strong> <span data-i18n="contacts">contacts</span>
-            </div>
-            
-            <!-- Multi-phone priority section (hidden by default) -->
-            <div id="phonePrioritySection" style="display:none; margin-top: 15px;">
-                <div class="info-box" style="background: #2a4a2a; border: 1px solid #30d158;">
-                    <strong><span data-i18n="multiPhoneDetected">Plusieurs colonnes téléphone détectées!</span></strong><br>
-                    <span style="font-size: 12px;" data-i18n="multiPhoneHelp">Glissez pour réordonner la priorité. Le premier numéro disponible sera utilisé.</span>
-                </div>
-                <div id="phonePriorityList" style="margin-top: 10px;"></div>
-            </div>
-            
-            <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="goToStep(1)" data-i18n="back">← Retour</button>
-                <button class="btn btn-primary" id="next2" disabled onclick="goToStep(3)" data-i18n="next">Suivant →</button>
-            </div>
-        </div>
-        
-        <!-- Step 3: Compose Message -->
-        <div id="step3" style="display:none">
-            <div class="step-indicator" data-i18n="step3of4">Étape 3 sur 4</div>
-            <h1><span data-i18n="composeMessage">Composer le message</span></h1>
-            <p class="description" data-i18n="composeDesc">Écrivez votre message. Utilisez {name} pour personnaliser avec le nom du destinataire.</p>
-            
-            <button class="insert-btn" onclick="insertName()" data-i18n="insertName">Insérer Prénom</button>
-            <textarea id="message" data-placeholder-i18n="typemessage" placeholder="Tapez votre message ici..." oninput="updateCharCount()"></textarea>
-            <div class="char-count"><span id="charCount">0</span> <span data-i18n="characters">caractères</span></div>
-            
-            <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="goToStep(2)" data-i18n="back">← Retour</button>
-                <button class="btn btn-primary" onclick="preparePreview()" data-i18n="next">Suivant →</button>
-            </div>
-        </div>
-        
-        <!-- Step 4: Preview (Debug-style) -->
-        <div id="step4" style="display:none">
-            <div class="step-indicator" data-i18n="step4of4">Étape 4 sur 4</div>
-            <h1><span data-i18n="previewSend">Aperçu & Envoi</span></h1>
-            
-            <div class="stats">
-                <div class="stat valid">
-                    <div class="num" id="validCount">0</div>
-                    <div class="label" data-i18n="valid">Valides</div>
-                </div>
-                <div class="stat skip">
-                    <div class="num" id="skipCount">0</div>
-                    <div class="label" data-i18n="skipped">Ignorés</div>
-                </div>
-            </div>
-            
-            <h2 data-i18n="validContacts">Contacts valides</h2>
-            <div class="scroll-container">
-                <table class="preview-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th data-i18n="name">Nom</th>
-                            <th data-i18n="phone">Téléphone</th>
-                            <th data-i18n="source">Source</th>
-                        </tr>
-                    </thead>
-                    <tbody id="validList"></tbody>
-                </table>
-            </div>
-            
-            <div id="skippedSection" style="display:none">
-                <h2 data-i18n="skippedContacts">Contacts ignorés</h2>
-                <div class="scroll-container">
-                    <table class="preview-table">
+            <div id="csv-preview" class="hidden">
+                <p style="margin: 16px 0 8px;">
+                    <span class="contact-count" id="contact-count">0</span> <span data-i18n="contacts_found">contacts trouvés</span>
+                </p>
+                <div class="contacts-table-wrapper">
+                    <table class="contacts-table">
                         <thead>
                             <tr>
                                 <th>#</th>
-                                <th data-i18n="reason">Raison</th>
-                                <th data-i18n="rawData">Données brutes</th>
+                                <th data-i18n="col_firstname">Prénom</th>
+                                <th data-i18n="col_lastname">Nom</th>
+                                <th data-i18n="col_phones">Téléphone(s)</th>
                             </tr>
                         </thead>
-                        <tbody id="skipList"></tbody>
+                        <tbody id="contacts-body"></tbody>
+                    </table>
+                </div>
+                <button class="btn btn-primary btn-full" id="btn-to-step2" style="margin-top: 20px;" data-i18n="next_step">
+                    Continuer →
+                </button>
+            </div>
+        </div>
+        
+        <!-- Step 2: Compose Message -->
+        <div id="screen-step2" class="card fade-in hidden">
+            <div class="card-title">
+                <span class="step-num">2</span>
+                <span data-i18n="step2_title">Rédigez votre message</span>
+            </div>
+            <div class="form-group">
+                <label data-i18n="insert_var">Insérer une variable :</label>
+                <div class="var-buttons">
+                    <button class="var-btn" id="btn-var-prenom">📝 Prénom</button>
+                    <button class="var-btn" id="btn-var-nom">📝 Nom</button>
+                </div>
+            </div>
+            <div class="form-group">
+                <label data-i18n="message_label">Votre message</label>
+                <textarea id="message-input" data-i18n-placeholder="message_placeholder" placeholder="Bonjour {{prenom}}, votre rendez-vous est confirmé!"></textarea>
+            </div>
+            <div id="message-preview-box" class="hidden">
+                <label data-i18n="preview_label">Aperçu (premier contact) :</label>
+                <div class="message-preview" id="message-preview"></div>
+            </div>
+            <div class="btn-group">
+                <button class="btn btn-secondary" id="btn-back-to-step1" data-i18n="back">← Retour</button>
+                <button class="btn btn-primary" id="btn-to-step3" disabled data-i18n="next_step">Continuer →</button>
+            </div>
+        </div>
+        
+        <!-- Step 3: Dashboard - Contact Validation (like mobile app) -->
+        <div id="screen-step3" class="card fade-in hidden">
+            <div class="card-title">
+                <span class="step-num">3</span>
+                <span data-i18n="step3_title">Vérification des contacts</span>
+            </div>
+            
+            <div class="separator-info" id="separator-info">
+                📄 <strong data-i18n="separator_detected">Séparateur détecté:</strong> <span id="separator-type">virgule</span>
+            </div>
+            
+            <div class="dashboard-stats">
+                <div class="dashboard-stat valid">
+                    <div class="num" id="valid-count">0</div>
+                    <div class="label" data-i18n="valid_contacts">VALIDES</div>
+                </div>
+                <div class="dashboard-stat skipped">
+                    <div class="num" id="skipped-count">0</div>
+                    <div class="label" data-i18n="skipped_contacts">IGNORÉS</div>
+                </div>
+            </div>
+            
+            <div class="section-title">✅ <span data-i18n="valid_contacts_title">Contacts valides</span></div>
+            <div class="contacts-table-wrapper" style="max-height: 200px;">
+                <table class="contacts-table">
+                    <thead>
+                        <tr>
+                            <th>#</th>
+                            <th data-i18n="col_firstname">Prénom</th>
+                            <th data-i18n="col_lastname">Nom</th>
+                            <th data-i18n="col_phone">Téléphone</th>
+                            <th data-i18n="col_source">Source</th>
+                        </tr>
+                    </thead>
+                    <tbody id="valid-contacts-body"></tbody>
+                </table>
+            </div>
+            
+            <div id="skipped-section">
+                <div class="section-title">❌ <span data-i18n="skipped_contacts_title">Contacts ignorés</span></div>
+                <div class="contacts-table-wrapper" style="max-height: 150px;">
+                    <table class="contacts-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th data-i18n="col_reason">Raison</th>
+                                <th data-i18n="col_raw_firstname">Prénom brut</th>
+                                <th data-i18n="col_raw_phone">Tél brut</th>
+                            </tr>
+                        </thead>
+                        <tbody id="skipped-contacts-body"></tbody>
                     </table>
                 </div>
             </div>
             
-            <h2><span data-i18n="messagePreview">Aperçu du message</span></h2>
-            <div class="message-preview" id="messagePreview"></div>
+            <div class="section-title">📝 <span data-i18n="message_preview_title">Aperçu du message</span></div>
+            <div class="message-preview" id="dashboard-preview"></div>
             
-            <div class="nav-buttons">
-                <button class="btn btn-secondary" onclick="goToStep(3)" data-i18n="back">← Retour</button>
-                <button class="btn btn-success" onclick="startSending()" data-i18n="sendAll">Envoyer tous les SMS</button>
+            <div class="btn-group" style="margin-top: 20px;">
+                <button class="btn btn-secondary" id="btn-back-to-step2" data-i18n="back">← Retour</button>
+                <button class="btn btn-success" id="btn-send">📤 <span data-i18n="send_all">Envoyer tout</span></button>
             </div>
         </div>
         
-        <!-- Step 5: Sending -->
-        <div id="step5" style="display:none">
-            <h1><span data-i18n="sending">Envoi en cours...</span></h1>
-            <p class="description" id="sendStatus" data-i18n="preparing">Préparation de l'envoi...</p>
-            
+        <!-- Sending Screen -->
+        <div id="screen-sending" class="card fade-in hidden">
+            <div class="card-title">
+                <span>📤</span>
+                <span data-i18n="sending_title">Envoi en cours...</span>
+            </div>
             <div class="progress-container">
-                <div class="progress-bar" id="progressBar" style="width:0%"></div>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+                </div>
+                <div class="progress-text">
+                    <span id="progress-current">0 / 0</span>
+                    <span id="progress-percent">0%</span>
+                </div>
             </div>
-            
-            <div class="log" id="sendLog"></div>
-            
-            <div class="nav-buttons" id="doneButtons" style="display:none">
-                <div></div>
-                <button class="btn btn-primary" onclick="window.close()" data-i18n="done">Terminé</button>
+            <div class="log-container" id="send-log"></div>
+            <button class="btn btn-danger btn-full" id="btn-stop" style="margin-top: 16px;" data-i18n="stop_sending">⏹ Arrêter l'envoi</button>
+        </div>
+        
+        <!-- Complete Screen -->
+        <div id="screen-complete" class="card fade-in hidden">
+            <div class="card-title">
+                <span>✅</span>
+                <span data-i18n="complete_title">Campagne terminée!</span>
             </div>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-value success" id="final-success">0</div>
+                    <div class="stat-label" data-i18n="stat_sent">Envoyés</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value error" id="final-failed">0</div>
+                    <div class="stat-label" data-i18n="stat_failed">Échoués</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value warning" id="final-skipped">0</div>
+                    <div class="stat-label" data-i18n="stat_skipped">Ignorés</div>
+                </div>
+            </div>
+            <button class="btn btn-primary btn-full" id="btn-new-campaign" style="margin-top: 20px;" data-i18n="new_campaign">📱 Nouvelle campagne</button>
         </div>
     </div>
     
-    <!-- Quit Button -->
-    <button class="quit-btn" onclick="quitApp()" data-i18n="stopCampaign">Arrêter la campagne</button>
-    
-    <!-- Language Toggle -->
-    <div class="lang-toggle">
-        <button class="lang-btn" id="btnEN" onclick="setLang('en')">EN</button>
-        <button class="lang-btn active" id="btnFR" onclick="setLang('fr')">FR</button>
-    </div>
-    
     <script>
-        // ============ TRANSLATIONS ============
+        // ===== TRANSLATIONS =====
         const translations = {
-            en: {
-                step1of4: "Step 1 of 4",
-                step2of4: "Step 2 of 4",
-                step3of4: "Step 3 of 4",
-                step4of4: "Step 4 of 4",
-                selectFile: "Select CSV File",
-                selectFileDesc: "Choose a CSV file containing your contacts with names and phone numbers.",
-                clickToSelect: "Click to select CSV file",
-                next: "Next →",
-                back: "← Back",
-                mapColumns: "Map Columns",
-                mapColumnsDesc: "Click on column headers to assign them. First click = Name, Second click = Phone.",
-                nameColumn: "Name Column",
-                phoneColumn: "Phone Column",
-                clickName: "Click the NAME column",
-                clickPhone: "Now click the PHONE column",
-                clickPhoneMulti: "Click a PHONE column (or use priority below)",
-                mappingDone: "Mapping complete!",
-                resetMapping: "Reset",
-                multiPhoneDetected: "Multiple phone columns detected!",
-                multiPhoneHelp: "Drag to reorder priority. First available number will be used.",
-                foundContacts: "Found",
-                contacts: "contacts",
-                composeMessage: "Compose Message",
-                composeDesc: "Write your message. Use {name} to personalize with recipient's name.",
-                insertName: "Insert First Name",
-                typemessage: "Type your message here...",
-                characters: "characters",
-                previewSend: "Preview & Send",
-                valid: "Valid",
-                skipped: "Skipped",
-                validContacts: "Valid Contacts",
-                skippedContacts: "Skipped Contacts",
-                name: "Name",
-                phone: "Phone",
-                source: "Source",
-                reason: "Reason",
-                rawData: "Raw Data",
-                messagePreview: "Message Preview",
-                sendAll: "Send All SMS",
-                stopCampaign: "Stop Campaign",
-                sending: "Sending Messages...",
-                preparing: "Preparing to send...",
-                done: "Done",
-                noPhone: "No phone number",
-                noName: "No name",
-                confirmSend: "Send {count} SMS messages?",
-                sendingProgress: "Sending {current} of {total}...",
-                complete: "Complete! Sent: {sent}, Failed: {failed}",
-                updateAvailable: "Update Available"
-            },
             fr: {
-                step1of4: "Étape 1 sur 4",
-                step2of4: "Étape 2 sur 4",
-                step3of4: "Étape 3 sur 4",
-                step4of4: "Étape 4 sur 4",
-                selectFile: "Sélectionner le fichier CSV",
-                selectFileDesc: "Choisissez un fichier CSV contenant vos contacts avec noms et numéros de téléphone.",
-                clickToSelect: "Cliquez pour sélectionner un fichier CSV",
-                next: "Suivant →",
+                checking_auth: "Vérification...",
+                activate_title: "Activer votre licence",
+                activate_desc: "Entrez votre code d'activation pour débloquer SMS Campaign.",
+                activation_code: "Code d'activation",
+                activate_btn: "Activer",
+                activation_failed: "Échec de l'activation",
+                step1_title: "Sélectionnez vos contacts",
+                drop_csv: "Glissez votre fichier CSV ici ou cliquez pour parcourir",
+                contacts_found: "contacts trouvés",
+                col_firstname: "Prénom",
+                col_lastname: "Nom", 
+                col_phones: "Téléphone(s)",
+                col_phone: "Téléphone",
+                col_source: "Source",
+                col_reason: "Raison",
+                col_raw_firstname: "Prénom brut",
+                col_raw_phone: "Tél brut",
+                next_step: "Continuer →",
                 back: "← Retour",
-                mapColumns: "Mapper les colonnes",
-                mapColumnsDesc: "Cliquez sur les en-têtes de colonnes pour les assigner. Premier clic = Nom, Deuxième clic = Téléphone.",
-                nameColumn: "Colonne Nom",
-                phoneColumn: "Colonne Téléphone",
-                clickName: "Cliquez sur la colonne NOM",
-                clickPhone: "Maintenant cliquez sur la colonne TÉLÉPHONE",
-                clickPhoneMulti: "Cliquez sur une colonne TÉLÉPHONE (ou utilisez la priorité ci-dessous)",
-                mappingDone: "Mapping terminé!",
-                resetMapping: "Réinitialiser",
-                multiPhoneDetected: "Plusieurs colonnes téléphone détectées!",
-                multiPhoneHelp: "Glissez pour réordonner la priorité. Le premier numéro disponible sera utilisé.",
-                foundContacts: "Trouvé",
-                contacts: "contacts",
-                composeMessage: "Composer le message",
-                composeDesc: "Écrivez votre message. Utilisez {name} pour personnaliser avec le nom du destinataire.",
-                insertName: "Insérer Prénom",
-                typemessage: "Tapez votre message ici...",
-                characters: "caractères",
-                previewSend: "Aperçu & Envoi",
-                valid: "Valides",
-                skipped: "Ignorés",
-                validContacts: "Contacts valides",
-                skippedContacts: "Contacts ignorés",
-                name: "Nom",
-                phone: "Téléphone",
-                source: "Source",
-                reason: "Raison",
-                rawData: "Données brutes",
-                messagePreview: "Aperçu du message",
-                sendAll: "Envoyer tous les SMS",
-                stopCampaign: "Arrêter la campagne",
-                sending: "Envoi en cours...",
-                preparing: "Préparation de l'envoi...",
-                done: "Terminé",
-                noPhone: "Pas de numéro",
-                noName: "Pas de nom",
-                confirmSend: "Envoyer {count} messages SMS?",
-                sendingProgress: "Envoi {current} sur {total}...",
-                complete: "Terminé! Envoyés: {sent}, Échoués: {failed}",
-                updateAvailable: "Mise à jour disponible"
+                step2_title: "Rédigez votre message",
+                insert_var: "Insérer une variable :",
+                message_label: "Votre message",
+                message_placeholder: "Bonjour {{prenom}}, votre rendez-vous est confirmé!",
+                preview_label: "Aperçu (premier contact) :",
+                step3_title: "Vérification des contacts",
+                separator_detected: "Séparateur détecté:",
+                valid_contacts: "VALIDES",
+                skipped_contacts: "IGNORÉS",
+                valid_contacts_title: "Contacts valides",
+                skipped_contacts_title: "Contacts ignorés",
+                message_preview_title: "Aperçu du message",
+                no_valid_contacts: "Aucun contact valide",
+                stat_contacts: "Contacts",
+                stat_messages: "Messages",
+                stat_time: "Temps est.",
+                final_message: "Message final :",
+                send_all: "Envoyer tout",
+                sending_title: "Envoi en cours...",
+                stop_sending: "⏹ Arrêter l'envoi",
+                complete_title: "Campagne terminée!",
+                stat_sent: "Envoyés",
+                stat_failed: "Échoués",
+                stat_skipped: "Ignorés",
+                new_campaign: "📱 Nouvelle campagne",
+                update_available: "Version",
+                available: "disponible!",
+                update_now: "Mettre à jour",
+                no_phone: "Pas de téléphone",
+                phone_invalid: "Téléphone invalide",
+                phone_too_short: "chiffres, min 10",
+                phone_too_long: "chiffres, trop long",
+                phone_empty: "Téléphone vide",
+                firstname_missing: "Prénom manquant",
+                separator_comma: "virgule",
+                separator_semicolon: "point-virgule",
+                separator_tab: "tabulation"
+            },
+            en: {
+                checking_auth: "Checking...",
+                activate_title: "Activate your license",
+                activate_desc: "Enter your activation code to unlock SMS Campaign.",
+                activation_code: "Activation Code",
+                activate_btn: "Activate",
+                activation_failed: "Activation Failed",
+                step1_title: "Select your contacts",
+                drop_csv: "Drop your CSV file here or click to browse",
+                contacts_found: "contacts found",
+                col_firstname: "First Name",
+                col_lastname: "Last Name",
+                col_phones: "Phone(s)",
+                col_phone: "Phone",
+                col_source: "Source",
+                col_reason: "Reason",
+                col_raw_firstname: "Raw First Name",
+                col_raw_phone: "Raw Phone",
+                next_step: "Continue →",
+                back: "← Back",
+                step2_title: "Compose your message",
+                insert_var: "Insert variable:",
+                message_label: "Your message",
+                message_placeholder: "Hello {{prenom}}, your appointment is confirmed!",
+                preview_label: "Preview (first contact):",
+                step3_title: "Contact Verification",
+                separator_detected: "Separator detected:",
+                valid_contacts: "VALID",
+                skipped_contacts: "SKIPPED",
+                valid_contacts_title: "Valid contacts",
+                skipped_contacts_title: "Skipped contacts",
+                message_preview_title: "Message preview",
+                no_valid_contacts: "No valid contacts",
+                stat_contacts: "Contacts",
+                stat_messages: "Messages",
+                stat_time: "Est. Time",
+                final_message: "Final message:",
+                send_all: "Send All",
+                sending_title: "Sending...",
+                stop_sending: "⏹ Stop Sending",
+                complete_title: "Campaign Complete!",
+                stat_sent: "Sent",
+                stat_failed: "Failed",
+                stat_skipped: "Skipped",
+                new_campaign: "📱 New Campaign",
+                update_available: "Version",
+                available: "available!",
+                update_now: "Update Now",
+                no_phone: "No phone",
+                phone_invalid: "Invalid phone",
+                phone_too_short: "digits, min 10",
+                phone_too_long: "digits, too long",
+                phone_empty: "Phone empty",
+                firstname_missing: "First name missing",
+                separator_comma: "comma",
+                separator_semicolon: "semicolon",
+                separator_tab: "tab"
             }
         };
         
@@ -1111,10 +812,9 @@ HTML_PAGE = '''<!DOCTYPE html>
         
         function setLang(lang) {
             currentLang = lang;
-            document.getElementById('btnEN').classList.toggle('active', lang === 'en');
-            document.getElementById('btnFR').classList.toggle('active', lang === 'fr');
+            document.getElementById('lang-fr').classList.toggle('active', lang === 'fr');
+            document.getElementById('lang-en').classList.toggle('active', lang === 'en');
             
-            // Update all elements with data-i18n
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
                 if (translations[lang][key]) {
@@ -1122,966 +822,994 @@ HTML_PAGE = '''<!DOCTYPE html>
                 }
             });
             
-            // Update placeholders
-            document.querySelectorAll('[data-placeholder-i18n]').forEach(el => {
-                const key = el.getAttribute('data-placeholder-i18n');
+            document.querySelectorAll('[data-i18n-placeholder]').forEach(el => {
+                const key = el.getAttribute('data-i18n-placeholder');
                 if (translations[lang][key]) {
                     el.placeholder = translations[lang][key];
                 }
             });
         }
         
-        function t(key, replacements = {}) {
-            let text = translations[currentLang][key] || key;
-            for (const [k, v] of Object.entries(replacements)) {
-                text = text.replace('{' + k + '}', v);
-            }
-            return text;
+        // ===== STATE =====
+        let contacts = [];
+        let messageTemplate = '';
+        let sending = false;
+        let stopped = false;
+        
+        // ===== SCREENS =====
+        const allScreens = ['screen-loading', 'screen-activation', 'screen-step1', 'screen-step2', 'screen-step3', 'screen-sending', 'screen-complete'];
+        
+        function showScreen(id) {
+            allScreens.forEach(s => document.getElementById(s).classList.add('hidden'));
+            document.getElementById(id).classList.remove('hidden');
         }
         
-        // ============ FRENCH ACCENT FIXES ============
-        const knownReplacements = {
-            'emilie': 'Émilie', 'eric': 'Éric', 'etienne': 'Étienne', 'eliane': 'Éliane', 'elise': 'Élise',
-            'stephanie': 'Stéphanie', 'stephane': 'Stéphane', 'frederic': 'Frédéric', 'frederique': 'Frédérique',
-            'valerie': 'Valérie', 'amelie': 'Amélie', 'melanie': 'Mélanie', 'helene': 'Hélène', 'mylene': 'Mylène',
-            'veronique': 'Véronique', 'sebastien': 'Sébastien', 'cedric': 'Cédric', 'gerard': 'Gérard',
-            'remi': 'Rémi', 'rene': 'René', 'andre': 'André', 'jerome': 'Jérôme', 'therese': 'Thérèse',
-            'genevieve': 'Geneviève', 'beatrice': 'Béatrice', 'benedicte': 'Bénédicte',
-            'bedard': 'Bédard', 'bechard': 'Béchard', 'berube': 'Bérubé', 'bezeau': 'Bézeau',
-            'levesque': 'Lévesque', 'leveille': 'Léveillé', 'legare': 'Légaré', 'leger': 'Léger',
-            'lepine': 'Lépine', 'menard': 'Ménard', 'prevost': 'Prévost', 'theoret': 'Théoret',
-            'tetu': 'Têtu', 'seguin': 'Séguin', 'senecal': 'Sénécal', 'gregoire': 'Grégoire',
-            'cote': 'Côté', 'crete': 'Crête', 'pere': 'Père', 'mere': 'Mère',
-            'francois': 'François', 'francoise': 'Françoise',
-            'francais': 'Français', 'prenom': 'Prénom', 'adresse': 'Adresse',
-            'electronique': 'Électronique', 'preferee': 'Préférée'
-        };
-        
-        function fixFrenchAccents(text) {
-            if (!text || typeof text !== 'string' || !text.includes('�')) return text;
-            
-            // Try known names first
-            let cleanText = text.replace(/�/g, '').toLowerCase();
-            if (knownReplacements[cleanText]) return knownReplacements[cleanText];
-            
-            // Pattern replacements
-            const patterns = [
-                [/^�milie$/i, 'Émilie'], [/^�ric$/i, 'Éric'], [/^�tienne$/i, 'Étienne'],
-                [/St�phan/gi, 'Stéphan'], [/St�ph/gi, 'Stéph'], [/B�dard/gi, 'Bédard'],
-                [/G�rard/gi, 'Gérard'], [/S�bastien/gi, 'Sébastien'], [/C�dric/gi, 'Cédric'],
-                [/R�mi/gi, 'Rémi'], [/B�atrice/gi, 'Béatrice'], [/Th�r�se/gi, 'Thérèse'],
-                [/H�l�ne/gi, 'Hélène'], [/Genevi�ve/gi, 'Geneviève'], [/V�ronique/gi, 'Véronique'],
-                [/Val�rie/gi, 'Valérie'], [/Am�lie/gi, 'Amélie'], [/M�lanie/gi, 'Mélanie'],
-                [/Myl�ne/gi, 'Mylène'], [/Fr�d�ric/gi, 'Frédéric'], [/Fr�d�rique/gi, 'Frédérique'],
-                [/Fran�ois/gi, 'François'], [/Fran�oise/gi, 'Françoise'],
-                [/Fran�ais/gi, 'Français'], [/Pr�nom/gi, 'Prénom'], [/Pr�f�r�e/gi, 'Préférée'],
-                [/�lectronique/gi, 'Électronique'], [/Adresse_�lec/gi, 'Adresse_Élec'],
-                [/L�vesque/gi, 'Lévesque'], [/L�ger/gi, 'Léger'], [/L�pine/gi, 'Lépine'],
-                [/M�nard/gi, 'Ménard'], [/S�guin/gi, 'Séguin'], [/S�n�cal/gi, 'Sénécal'],
-                [/Pr�vost/gi, 'Prévost'], [/Th�oret/gi, 'Théoret'], [/Gr�goire/gi, 'Grégoire'],
-                [/B�rub�/gi, 'Bérubé'], [/L�gar�/gi, 'Légaré'], [/C�t�/gi, 'Côté'],
-                [/T�tu/gi, 'Têtu'], [/Cr�te/gi, 'Crête'],
-                // -ière endings
-                [/li�re\\b/gi, 'lière'], [/ti�re\\b/gi, 'tière'], [/ni�re\\b/gi, 'nière'],
-                [/ri�re\\b/gi, 'rière'], [/mi�re\\b/gi, 'mière'], [/vi�re\\b/gi, 'vière'],
-                // é at end (René, André)
-                [/n�\\b/g, 'né'], [/r�\\b/g, 'ré'], [/l�\\b/g, 'lé'], [/t�\\b/g, 'té'],
-                [/d�\\b/g, 'dé'], [/s�\\b/g, 'sé'], [/m�\\b/g, 'mé'],
-                // è patterns (before consonant+e at end)
-                [/�ve\\b/gi, 'ève'], [/�le\\b/gi, 'èle'], [/�ne\\b/gi, 'ène'],
-                [/�re\\b/gi, 'ère'], [/�me\\b/gi, 'ème'], [/�te\\b/gi, 'ète']
-            ];
-            
-            for (const [pattern, replacement] of patterns) {
-                text = text.replace(pattern, replacement);
-            }
-            
-            // Default: remaining � is probably é
-            return text.replace(/�/g, 'é');
+        // ===== API =====
+        async function api(action, data = {}) {
+            const response = await fetch('/api', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ action, ...data })
+            });
+            return response.json();
         }
         
-        // ============ DATA ============
-        let csvData = [];
-        let headers = [];
-        let recipients = [];
-        let skipped = [];
-        let nameCol = -1;
-        let phoneCol = -1;
-        let phoneCols = []; // Array of {index, name} for multi-phone columns
-        let phonePriorityOrder = []; // User-defined priority order
-        let mappingStep = 0; // 0 = select name, 1 = select phone, 2 = done
+        // ===== INIT =====
+        async function init() {
+            showScreen('screen-loading');
+            checkForUpdate();
+            const result = await api('check_auth');
+            showScreen(result.authorized ? 'screen-step1' : 'screen-activation');
+        }
         
-        // Phone column keywords for auto-detection
-        const phoneKeywords = ['phone', 'mobile', 'cell', 'telephone', 'tel', 'work', 'home', 'maison', 'travail', 'bureau', 'cellulaire', 'domicile'];
+        // ===== UPDATE =====
+        let updateDownloadUrl = null;
         
-        // ============ FILE HANDLING ============
-        function handleFile(input) {
-            const file = input.files[0];
-            if (!file) return;
+        async function checkForUpdate() {
+            try {
+                const result = await api('check_update');
+                if (result.available) {
+                    updateDownloadUrl = result.download_url;
+                    document.getElementById('update-version').textContent = result.version;
+                    document.getElementById('update-banner').classList.remove('hidden');
+                }
+            } catch (e) {}
+        }
+        
+        document.getElementById('btn-update').addEventListener('click', async () => {
+            const btn = document.getElementById('btn-update');
+            btn.disabled = true;
+            btn.textContent = '...';
+            const result = await api('perform_update', { download_url: updateDownloadUrl });
+            if (!result.success) {
+                alert('Update failed: ' + (result.error || 'Unknown'));
+                btn.disabled = false;
+                btn.textContent = translations[currentLang].update_now;
+            }
+        });
+        
+        // ===== ACTIVATION =====
+        document.getElementById('btn-activate').addEventListener('click', async () => {
+            const code = document.getElementById('activation-code').value.trim();
+            const errorEl = document.getElementById('activation-error');
+            const errorMsg = document.getElementById('activation-error-msg');
+            const btn = document.getElementById('btn-activate');
             
-            document.getElementById('fileName').textContent = file.name;
-            document.getElementById('fileDrop').classList.add('has-file');
+            if (!code) {
+                errorEl.classList.remove('hidden');
+                errorMsg.textContent = currentLang === 'fr' ? 'Veuillez entrer un code.' : 'Please enter a code.';
+                return;
+            }
             
+            btn.disabled = true;
+            btn.innerHTML = '<div class="spinner"></div>';
+            errorEl.classList.add('hidden');
+            
+            const result = await api('activate', { code });
+            btn.disabled = false;
+            btn.innerHTML = `<span>${translations[currentLang].activate_btn}</span>`;
+            
+            if (result.success) {
+                showScreen('screen-step1');
+            } else {
+                errorEl.classList.remove('hidden');
+                errorMsg.textContent = result.error || 'Invalid code';
+            }
+        });
+        
+        // ===== STEP 1: CSV =====
+        const fileInput = document.getElementById('file-input');
+        const fileDropZone = document.getElementById('file-drop-zone');
+        
+        fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+        fileDropZone.addEventListener('dragover', e => { e.preventDefault(); fileDropZone.style.borderColor = 'var(--accent)'; });
+        fileDropZone.addEventListener('dragleave', () => { fileDropZone.style.borderColor = ''; });
+        fileDropZone.addEventListener('drop', e => { e.preventDefault(); fileDropZone.style.borderColor = ''; if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
+        
+        async function handleFile(file) {
             const reader = new FileReader();
-            reader.onload = function(e) {
-                const text = e.target.result;
-                const lines = text.split(/\\r?\\n/).filter(line => line.trim());
-                
-                // Detect separator
-                const firstLine = lines[0];
-                const semicolons = (firstLine.match(/;/g) || []).length;
-                const commas = (firstLine.match(/,/g) || []).length;
-                const separator = semicolons > commas ? ';' : ',';
-                
-                // Parse and fix French accents in headers
-                headers = parseCSVLine(lines[0], separator).map(h => fixFrenchAccents(h));
-                
-                // Parse data rows and fix French accents in all values
-                csvData = lines.slice(1).map((line, idx) => ({
-                    lineNumber: idx + 2,
-                    values: parseCSVLine(line, separator).map(v => fixFrenchAccents(v))
-                }));
-                
-                document.getElementById('contactCount').textContent = csvData.length;
-                document.getElementById('next1').disabled = false;
-                
-                // Reset mapping
-                nameCol = -1;
-                phoneCol = -1;
-                mappingStep = 0;
-                
-                // Build column mapper
-                buildColumnMapper();
+            reader.onload = async e => {
+                const result = await api('parse_csv', { content: e.target.result, filename: file.name });
+                if (result.success) {
+                    contacts = result.contacts;
+                    separatorType = result.separator || 'comma';
+                    
+                    fileDropZone.classList.add('has-file');
+                    document.getElementById('file-name').textContent = file.name;
+                    document.getElementById('file-name').classList.remove('hidden');
+                    
+                    document.getElementById('contact-count').textContent = contacts.length;
+                    const tbody = document.getElementById('contacts-body');
+                    tbody.innerHTML = '';
+                    
+                    contacts.forEach((c, i) => {
+                        const phones = c.phones.length ? c.phones.map(p => `<span class="phone-tag">${p}</span>`).join('') : `<span style="color:var(--text-secondary)">${translations[currentLang].no_phone}</span>`;
+                        tbody.innerHTML += `<tr><td>${i+1}</td><td>${c.firstname || '—'}</td><td>${c.lastname || '—'}</td><td>${phones}</td></tr>`;
+                    });
+                    
+                    document.getElementById('csv-preview').classList.remove('hidden');
+                } else {
+                    alert('Error: ' + result.error);
+                }
             };
             reader.readAsText(file);
         }
         
-        function parseCSVLine(line, separator = ',') {
-            const result = [];
-            let current = '';
-            let inQuotes = false;
-            for (let char of line) {
-                if (char === '"') inQuotes = !inQuotes;
-                else if (char === separator && !inQuotes) { result.push(current.trim()); current = ''; }
-                else current += char;
-            }
-            result.push(current.trim());
-            return result;
+        document.getElementById('btn-to-step2').addEventListener('click', () => {
+            if (contacts.length > 0) showScreen('screen-step2');
+        });
+        
+        // ===== STEP 2: MESSAGE =====
+        const messageInput = document.getElementById('message-input');
+        
+        document.getElementById('btn-var-prenom').addEventListener('click', () => {
+            insertAtCursor(messageInput, '{{prenom}} ');
+            messageInput.dispatchEvent(new Event('input'));
+        });
+        
+        document.getElementById('btn-var-nom').addEventListener('click', () => {
+            insertAtCursor(messageInput, '{{nom}} ');
+            messageInput.dispatchEvent(new Event('input'));
+        });
+        
+        function insertAtCursor(el, text) {
+            const start = el.selectionStart;
+            const end = el.selectionEnd;
+            el.value = el.value.substring(0, start) + text + el.value.substring(end);
+            el.selectionStart = el.selectionEnd = start + text.length;
+            el.focus();
         }
         
-        // ============ COLUMN MAPPER ============
-        function detectPhoneColumns() {
-            // Detect all columns that look like phone columns
-            phoneCols = [];
-            const mobileKeywords = ['mobile', 'cell', 'cellulaire', 'cellular', 'portable'];
-            const workKeywords = ['work', 'travail', 'bureau', 'office', 'business', 'professionnel'];
-            const homeKeywords = ['home', 'maison', 'domicile', 'residence', 'personnel'];
-            const genericKeywords = ['phone', 'telephone', 'tel', 'numero', 'number'];
+        messageInput.addEventListener('input', () => {
+            messageTemplate = messageInput.value;
+            const btn = document.getElementById('btn-to-step3');
             
-            headers.forEach((header, idx) => {
-                const h = header.toLowerCase();
-                let type = null;
-                
-                if (mobileKeywords.some(k => h.includes(k))) type = 'mobile';
-                else if (workKeywords.some(k => h.includes(k))) type = 'work';
-                else if (homeKeywords.some(k => h.includes(k))) type = 'home';
-                else if (genericKeywords.some(k => h.includes(k))) type = 'phone';
-                
-                if (type) {
-                    phoneCols.push({ index: idx, name: header, type: type });
-                }
-            });
-            
-            // Set default priority order (mobile first, then work, then home, then generic)
-            const typePriority = ['mobile', 'work', 'home', 'phone'];
-            phoneCols.sort((a, b) => typePriority.indexOf(a.type) - typePriority.indexOf(b.type));
-            phonePriorityOrder = phoneCols.map(c => c.index);
-            
-            return phoneCols;
-        }
-        
-        function buildPhonePriorityList() {
-            const container = document.getElementById('phonePriorityList');
-            let html = '';
-            
-            phonePriorityOrder.forEach((colIdx, priority) => {
-                const col = phoneCols.find(c => c.index === colIdx);
-                if (!col) return;
-                
-                const typeLabel = col.type === 'mobile' ? 'Mobile' : col.type === 'work' ? 'Work' : col.type === 'home' ? 'Home' : 'Phone';
-                html += `<div class="priority-item" draggable="true" data-col="${colIdx}">
-                    <div class="priority-num">${priority + 1}</div>
-                    <div class="priority-name"><span style="color:#8e8e93;font-size:11px;">[${typeLabel}]</span> ${col.name}</div>
-                    <div class="priority-handle">☰</div>
-                </div>`;
-            });
-            
-            container.innerHTML = html;
-            
-            // Add drag and drop handlers
-            const items = container.querySelectorAll('.priority-item');
-            items.forEach(item => {
-                item.addEventListener('dragstart', handleDragStart);
-                item.addEventListener('dragover', handleDragOver);
-                item.addEventListener('drop', handleDrop);
-                item.addEventListener('dragend', handleDragEnd);
-            });
-        }
-        
-        let draggedItem = null;
-        
-        function handleDragStart(e) {
-            draggedItem = this;
-            this.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-        }
-        
-        function handleDragOver(e) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
-        }
-        
-        function handleDrop(e) {
-            e.preventDefault();
-            if (draggedItem !== this) {
-                // Get current positions
-                const container = document.getElementById('phonePriorityList');
-                const items = [...container.querySelectorAll('.priority-item')];
-                const draggedIdx = items.indexOf(draggedItem);
-                const targetIdx = items.indexOf(this);
-                
-                // Reorder in DOM
-                if (draggedIdx < targetIdx) {
-                    this.parentNode.insertBefore(draggedItem, this.nextSibling);
-                } else {
-                    this.parentNode.insertBefore(draggedItem, this);
-                }
-                
-                // Update priority order array
-                updatePriorityFromDOM();
-            }
-        }
-        
-        function handleDragEnd() {
-            this.classList.remove('dragging');
-            draggedItem = null;
-        }
-        
-        function updatePriorityFromDOM() {
-            const container = document.getElementById('phonePriorityList');
-            const items = container.querySelectorAll('.priority-item');
-            phonePriorityOrder = [];
-            
-            items.forEach((item, idx) => {
-                const colIdx = parseInt(item.dataset.col);
-                phonePriorityOrder.push(colIdx);
-                // Update priority number display
-                item.querySelector('.priority-num').textContent = idx + 1;
-            });
-        }
-        
-        function buildColumnMapper() {
-            const mapper = document.getElementById('columnMapper');
-            const maxCols = Math.min(headers.length, 6); // Show max 6 columns
-            const previewRows = Math.min(csvData.length, 3); // Show 3 data rows
-            
-            let html = '<div class="mapper-header">';
-            for (let i = 0; i < maxCols; i++) {
-                html += `<div>${headers[i].substring(0, 15)}</div>`;
-            }
-            html += '</div>';
-            
-            // Header row (clickable)
-            html += '<div class="mapper-row">';
-            for (let i = 0; i < maxCols; i++) {
-                html += `<div class="mapper-cell header-cell" data-col="${i}" onclick="selectColumn(${i})">${headers[i]}</div>`;
-            }
-            html += '</div>';
-            
-            // Data rows
-            for (let r = 0; r < previewRows; r++) {
-                html += '<div class="mapper-row">';
-                for (let i = 0; i < maxCols; i++) {
-                    const val = csvData[r].values[i] || '';
-                    html += `<div class="mapper-cell data-cell">${val.substring(0, 20)}</div>`;
-                }
-                html += '</div>';
-            }
-            
-            mapper.innerHTML = html;
-            
-            // Detect phone columns
-            detectPhoneColumns();
-            
-            // Show priority section if multiple phone columns detected
-            const prioritySection = document.getElementById('phonePrioritySection');
-            if (phoneCols.length > 1) {
-                prioritySection.style.display = 'block';
-                buildPhonePriorityList();
+            if (messageTemplate.trim()) {
+                btn.disabled = false;
+                const preview = messageTemplate
+                    .replace(/\\{\\{prenom\\}\\}/gi, contacts[0]?.firstname || contacts[0]?.name || 'Client')
+                    .replace(/\\{\\{nom\\}\\}/gi, contacts[0]?.lastname || '')
+                    .replace(/\\{\\{name\\}\\}/gi, contacts[0]?.name || contacts[0]?.firstname || 'Client');
+                document.getElementById('message-preview').textContent = preview;
+                document.getElementById('message-preview-box').classList.remove('hidden');
             } else {
-                prioritySection.style.display = 'none';
+                btn.disabled = true;
+                document.getElementById('message-preview-box').classList.add('hidden');
             }
-            
-            updateMappingMode();
-        }
+        });
         
-        function selectColumn(col) {
-            if (mappingStep === 0) {
-                // Selecting name column
-                nameCol = col;
-                mappingStep = 1;
-                
-                // If multiple phone columns detected, enable Next right away (user can use priority)
-                if (phoneCols.length > 1) {
-                    document.getElementById('next2').disabled = false;
-                }
-            } else if (mappingStep === 1 || (mappingStep === 2 && phoneCols.length > 1 && phoneCol === -1)) {
-                // Selecting phone column (or overriding in multi-phone mode)
-                if (col === nameCol) return; // Can't select same column
-                phoneCol = col;
-                mappingStep = 2;
-                
-                // If in multi-phone mode, move selected column to top of priority
-                if (phoneCols.length > 1) {
-                    const idx = phonePriorityOrder.indexOf(col);
-                    if (idx > 0) {
-                        phonePriorityOrder.splice(idx, 1);
-                        phonePriorityOrder.unshift(col);
-                        buildPhonePriorityList();
-                    }
-                }
-                
-                document.getElementById('next2').disabled = false;
-            }
-            
-            // Update visual state
-            document.querySelectorAll('.header-cell').forEach(cell => {
-                cell.classList.remove('selected-name', 'selected-phone');
-                const c = parseInt(cell.dataset.col);
-                if (c === nameCol) cell.classList.add('selected-name');
-                if (c === phoneCol) cell.classList.add('selected-phone');
-            });
-            
-            updateMappingMode();
-        }
+        document.getElementById('btn-back-to-step1').addEventListener('click', () => showScreen('screen-step1'));
         
-        function resetMapping() {
-            nameCol = -1;
-            phoneCol = -1;
-            mappingStep = 0;
-            document.getElementById('next2').disabled = true;
-            
-            // Remove all selection classes
-            document.querySelectorAll('.header-cell').forEach(cell => {
-                cell.classList.remove('selected-name', 'selected-phone');
-            });
-            
-            updateMappingMode();
-        }
+        // Store validated contacts data
+        let validatedContacts = [];
+        let skippedContacts = [];
+        let separatorType = 'virgule';
         
-        function updateMappingMode() {
-            const mode = document.getElementById('mappingMode');
-            if (mappingStep === 0) {
-                mode.textContent = t('clickName');
-                mode.style.background = '#30d158';
-            } else if (mappingStep === 1) {
-                // If multiple phone columns, show different message
-                if (phoneCols.length > 1) {
-                    mode.textContent = t('clickPhoneMulti') || 'Click a PHONE column (or use priority below)';
-                    mode.style.background = '#ff9f0a';
+        document.getElementById('btn-to-step3').addEventListener('click', () => {
+            if (!messageTemplate.trim()) return;
+            
+            // Validate contacts (like mobile app)
+            validatedContacts = [];
+            skippedContacts = [];
+            
+            contacts.forEach((c, i) => {
+                // Get the best phone
+                const rawPhone = c.phones.length > 0 ? c.phones[0] : '';
+                const formattedPhone = formatPhoneNumber(rawPhone);
+                
+                // Validate contact (like mobile app - requires firstname and valid phone)
+                const skipReason = validatePhone(formattedPhone, rawPhone, c.firstname);
+                
+                if (skipReason) {
+                    skippedContacts.push({
+                        lineNumber: i + 1,
+                        reason: skipReason,
+                        rawFirstName: c.firstname || '',
+                        rawPhone: c.raw_phone || rawPhone || ''
+                    });
                 } else {
-                    mode.textContent = t('clickPhone');
-                    mode.style.background = '#ff9f0a';
+                    validatedContacts.push({
+                        lineNumber: i + 1,
+                        phone: formattedPhone,
+                        firstname: c.firstname || '',
+                        lastname: c.lastname || '',
+                        phoneSource: c.phone_source || 'principal',
+                        rawPhone: rawPhone
+                    });
                 }
+            });
+            
+            // Populate dashboard
+            document.getElementById('valid-count').textContent = validatedContacts.length;
+            document.getElementById('skipped-count').textContent = skippedContacts.length;
+            document.getElementById('separator-type').textContent = translations[currentLang][`separator_${separatorType}`] || separatorType;
+            
+            // Valid contacts table
+            const validBody = document.getElementById('valid-contacts-body');
+            validBody.innerHTML = '';
+            if (validatedContacts.length === 0) {
+                validBody.innerHTML = `<tr><td colspan="5" style="color:var(--text-secondary)">${translations[currentLang].no_valid_contacts}</td></tr>`;
             } else {
-                mode.textContent = t('mappingDone');
-                mode.style.background = '#0a84ff';
-            }
-        }
-        
-        // ============ NAVIGATION ============
-        function goToStep(n) {
-            for (let i = 1; i <= 5; i++) {
-                document.getElementById('step' + i).style.display = i === n ? 'block' : 'none';
-            }
-            if (n === 2) {
-                buildColumnMapper();
-            }
-        }
-        
-        // ============ MESSAGE ============
-        function insertName() {
-            const ta = document.getElementById('message');
-            const pos = ta.selectionStart;
-            const text = ta.value;
-            ta.value = text.slice(0, pos) + '{name} ' + text.slice(pos);
-            updateCharCount();
-            ta.focus();
-        }
-        
-        function updateCharCount() {
-            const len = document.getElementById('message').value.length;
-            document.getElementById('charCount').textContent = len;
-        }
-        
-        // ============ PHONE PARSING ============
-        // Priority: mobile > cell > work > home > unknown
-        const phonePriority = ['mobile', 'cell', 'cellular', 'work', 'travail', 'home', 'maison', 'domicile'];
-        
-        function extractBestPhone(rawPhone) {
-            if (!rawPhone || !rawPhone.trim()) {
-                return { phone: '', source: 'empty' };
+                validatedContacts.forEach(c => {
+                    validBody.innerHTML += `<tr>
+                        <td>${c.lineNumber}</td>
+                        <td>${c.firstname || '—'}</td>
+                        <td>${c.lastname || '—'}</td>
+                        <td class="phone-tag">${c.phone}</td>
+                        <td class="phone-source">${c.phoneSource}</td>
+                    </tr>`;
+                });
             }
             
-            const raw = rawPhone.trim();
-            
-            // Check if it contains multiple phones (has | separator or : type indicator)
-            if (raw.includes('|') || raw.includes(':')) {
-                // Format: "4389266456 : work | 5798819696 : home | 4389266456 : mobile"
-                const parts = raw.split('|').map(p => p.trim()).filter(p => p);
-                const phones = [];
-                
-                for (const part of parts) {
-                    // Parse "number : type" or "number ext: xxx : type"
-                    let number = '';
-                    let type = 'unknown';
-                    
-                    if (part.includes(':')) {
-                        const segments = part.split(':').map(s => s.trim());
-                        
-                        if (segments.length >= 2) {
-                            // Last segment is usually the type
-                            const lastSeg = segments[segments.length - 1].toLowerCase();
-                            
-                            // Check if last segment is a phone type
-                            if (phonePriority.some(p => lastSeg.includes(p)) || lastSeg === 'unknown') {
-                                type = lastSeg;
-                                // Number is everything before the type, excluding 'ext' parts
-                                number = segments[0];
-                            } else if (segments.length >= 3 && segments[1].toLowerCase().startsWith('ext')) {
-                                // Format: "number ext: 123 : type"
-                                type = lastSeg;
-                                number = segments[0];
-                            } else {
-                                // Just take first segment as number
-                                number = segments[0];
-                            }
-                        }
-                    } else {
-                        number = part;
-                    }
-                    
-                    // Clean the number - only digits
-                    const digits = number.replace(/\\D/g, '');
-                    if (digits.length >= 10) {
-                        phones.push({ number: digits, type: type });
-                    }
-                }
-                
-                if (phones.length === 0) {
-                    return { phone: '', source: 'no valid phones' };
-                }
-                
-                // Find best phone by priority
-                for (const priority of phonePriority) {
-                    for (const p of phones) {
-                        if (p.type.includes(priority)) {
-                            return { phone: formatPhone(p.number), source: p.type };
-                        }
-                    }
-                }
-                
-                // No priority match, return first one
-                return { phone: formatPhone(phones[0].number), source: phones[0].type + ' (first)' };
+            // Skipped contacts table
+            const skippedBody = document.getElementById('skipped-contacts-body');
+            skippedBody.innerHTML = '';
+            if (skippedContacts.length === 0) {
+                document.getElementById('skipped-section').style.display = 'none';
+            } else {
+                document.getElementById('skipped-section').style.display = 'block';
+                skippedContacts.forEach(s => {
+                    skippedBody.innerHTML += `<tr>
+                        <td>${s.lineNumber}</td>
+                        <td class="reason">${s.reason}</td>
+                        <td class="raw-data">${s.rawFirstName || '—'}</td>
+                        <td class="raw-data">${(s.rawPhone || '—').substring(0, 30)}</td>
+                    </tr>`;
+                });
             }
             
-            // Single phone number - just clean it
-            const digits = raw.replace(/\\D/g, '');
-            if (digits.length >= 10) {
-                return { phone: formatPhone(digits), source: 'single' };
-            }
+            // Message preview (like mobile app)
+            const firstValid = validatedContacts[0];
+            const preview = firstValid ? messageTemplate
+                .replace(/\\{\\{prenom\\}\\}/gi, `<span style="background:#0a84ff33;color:#0a84ff;padding:2px 6px;border-radius:4px">${firstValid.firstname || 'Client'}</span>`)
+                .replace(/\\{\\{nom\\}\\}/gi, `<span style="background:#0a84ff33;color:#0a84ff;padding:2px 6px;border-radius:4px">${firstValid.lastname || ''}</span>`)
+                .replace(/\\{\\{name\\}\\}/gi, `<span style="background:#0a84ff33;color:#0a84ff;padding:2px 6px;border-radius:4px">${firstValid.firstname || 'Client'}</span>`)
+                : messageTemplate;
+            document.getElementById('dashboard-preview').innerHTML = preview;
             
-            return { phone: '', source: 'invalid' };
-        }
+            // Disable send if no valid contacts
+            document.getElementById('btn-send').disabled = validatedContacts.length === 0;
+            
+            showScreen('screen-step3');
+        });
         
-        function formatPhone(digits) {
-            // Ensure proper format: +1XXXXXXXXXX
+        // Phone formatting (like mobile app)
+        function formatPhoneNumber(phone) {
+            if (!phone) return '';
+            
+            let cleaned = phone.replace(/[^\\d+]/g, '');
+            
+            // Already formatted with +1
+            if (cleaned.startsWith('+1') && cleaned.length === 12) {
+                return cleaned;
+            }
+            
+            // Starts with 1 (North American)
+            if (cleaned.startsWith('1') && cleaned.length === 11) {
+                return '+' + cleaned;
+            }
+            
+            // Get just digits
+            let digits = cleaned.replace(/\\D/g, '');
+            
+            // 10 digits - add +1
             if (digits.length === 10) {
                 return '+1' + digits;
-            } else if (digits.length === 11 && digits.startsWith('1')) {
+            }
+            
+            // 11 digits starting with 1
+            if (digits.length === 11 && digits.startsWith('1')) {
                 return '+' + digits;
-            } else if (digits.length > 11) {
-                // Take last 10 digits if too long
-                return '+1' + digits.slice(-10);
             }
-            return '+1' + digits;
+            
+            return cleaned;
         }
         
-        // ============ PREVIEW ============
-        function preparePreview() {
-            const msg = document.getElementById('message').value.trim();
-            if (!msg) { alert(currentLang === 'fr' ? 'Veuillez entrer un message' : 'Please enter a message'); return; }
-            
-            recipients = [];
-            skipped = [];
-            
-            csvData.forEach(row => {
-                const rawName = row.values[nameCol] || '';
-                
-                // Get phone based on whether we have multiple phone columns or single selection
-                let phone = '';
-                let source = '';
-                
-                if (phoneCols.length > 1 && phonePriorityOrder.length > 0) {
-                    // Multi-phone column mode: use priority order
-                    for (const colIdx of phonePriorityOrder) {
-                        const rawPhone = row.values[colIdx] || '';
-                        if (rawPhone.trim()) {
-                            const result = extractBestPhone(rawPhone);
-                            if (result.phone) {
-                                phone = result.phone;
-                                const col = phoneCols.find(c => c.index === colIdx);
-                                source = col ? col.name : result.source;
-                                break; // Found a valid phone, stop looking
-                            }
-                        }
-                    }
-                    if (!phone) {
-                        source = 'no phone in priority cols';
-                    }
-                } else {
-                    // Single phone column mode
-                    const rawPhone = row.values[phoneCol] || '';
-                    const result = extractBestPhone(rawPhone);
-                    phone = result.phone;
-                    source = result.source;
-                }
-                
-                // Fix French accents in name
-                const name = fixFrenchAccents(rawName.trim());
-                
-                if (!phone) {
-                    skipped.push({
-                        lineNumber: row.lineNumber,
-                        reason: t('noPhone'),
-                        raw: name + ' | ' + rawPhone.substring(0, 40)
-                    });
-                } else if (!name) {
-                    skipped.push({
-                        lineNumber: row.lineNumber,
-                        reason: t('noName'),
-                        raw: phone
-                    });
-                } else {
-                    recipients.push({
-                        lineNumber: row.lineNumber,
-                        name: name,
-                        phone: phone,
-                        phoneSource: source,
-                        message: msg.replace(/{name}/g, name)
-                    });
-                }
-            });
-            
-            // Update stats
-            document.getElementById('validCount').textContent = recipients.length;
-            document.getElementById('skipCount').textContent = skipped.length;
-            
-            // Populate valid list - show ALL entries for quick verification
-            const validList = document.getElementById('validList');
-            validList.innerHTML = recipients.map(r => `
-                <tr>
-                    <td>${r.lineNumber}</td>
-                    <td>${r.name}</td>
-                    <td class="phone">${r.phone}</td>
-                    <td class="source">${r.phoneSource || ''}</td>
-                </tr>
-            `).join('');
-            
-            // Populate skipped list
-            if (skipped.length > 0) {
-                document.getElementById('skippedSection').style.display = 'block';
-                document.getElementById('skipList').innerHTML = skipped.map(s => `
-                    <tr>
-                        <td>${s.lineNumber}</td>
-                        <td class="error">${s.reason}</td>
-                        <td style="color:#5a5a5e">${s.raw.substring(0, 30)}</td>
-                    </tr>
-                `).join('');
-            } else {
-                document.getElementById('skippedSection').style.display = 'none';
+        // Phone validation (like mobile app - require firstname)
+        function validatePhone(phone, rawPhone, firstname) {
+            // Firstname is required (like mobile app)
+            if (!firstname || firstname.trim().length === 0) {
+                return translations[currentLang].firstname_missing || 'Prénom manquant';
             }
             
-            // Message preview
-            let preview = msg;
-            if (recipients.length > 0) {
-                preview = msg.replace(/{name}/g, `<span class="var">${recipients[0].name}</span>`);
-            }
-            document.getElementById('messagePreview').innerHTML = preview;
+            const phoneDigits = phone.replace(/\\D/g, '');
             
-            goToStep(4);
+            if (!phoneDigits || phoneDigits.length === 0) {
+                return translations[currentLang].phone_empty;
+            }
+            
+            if (phoneDigits.length < 10) {
+                return `${translations[currentLang].phone_invalid}: "${rawPhone}" (${phoneDigits.length} ${translations[currentLang].phone_too_short})`;
+            }
+            
+            if (phoneDigits.length > 15) {
+                return `${translations[currentLang].phone_invalid}: "${rawPhone}" (${phoneDigits.length} ${translations[currentLang].phone_too_long})`;
+            }
+            
+            return null; // Valid
         }
         
-        // ============ SENDING ============
-        async function startSending() {
-            if (!confirm(t('confirmSend', {count: recipients.length}))) return;
-            goToStep(5);
+        // ===== STEP 3: SEND =====
+        document.getElementById('btn-back-to-step2').addEventListener('click', () => showScreen('screen-step2'));
+        
+        document.getElementById('btn-send').addEventListener('click', async () => {
+            if (validatedContacts.length === 0) return;
             
-            const log = document.getElementById('sendLog');
-            const progress = document.getElementById('progressBar');
-            const status = document.getElementById('sendStatus');
+            showScreen('screen-sending');
+            sending = true;
+            stopped = false;
+            
+            const log = document.getElementById('send-log');
+            log.innerHTML = '';
+            
             let sent = 0, failed = 0;
+            const total = validatedContacts.length;
             
-            for (let i = 0; i < recipients.length; i++) {
-                const r = recipients[i];
-                status.textContent = t('sendingProgress', {current: i + 1, total: recipients.length});
-                progress.style.width = ((i + 1) / recipients.length * 100) + '%';
+            for (let i = 0; i < validatedContacts.length && !stopped; i++) {
+                const contact = validatedContacts[i];
+                const phone = contact.phone;
+                const message = messageTemplate
+                    .replace(/\\{\\{prenom\\}\\}/gi, contact.firstname || '')
+                    .replace(/\\{\\{nom\\}\\}/gi, contact.lastname || '')
+                    .replace(/\\{\\{name\\}\\}/gi, contact.firstname || '');
                 
-                try {
-                    const resp = await fetch('/send', {
-                        method: 'POST',
-                        headers: {'Content-Type': 'application/json'},
-                        body: JSON.stringify({phone: r.phone, message: r.message, name: r.name})
-                    });
-                    const result = await resp.json();
-                    
-                    if (result.success) {
-                        sent++;
-                        log.innerHTML += `<div class="log-success">✓ ${r.name} (${r.phone})</div>`;
-                    } else {
-                        failed++;
-                        log.innerHTML += `<div class="log-error">✗ ${r.name} (${r.phone})</div>`;
-                    }
-                } catch (e) {
-                    failed++;
-                    log.innerHTML += `<div class="log-error">✗ ${r.name} - Error</div>`;
-                }
-                log.scrollTop = log.scrollHeight;
-            }
-            
-            status.textContent = t('complete', {sent: sent, failed: failed});
-            document.getElementById('doneButtons').style.display = 'flex';
-        }
-        
-        // ============ SHUTDOWN ON CLOSE ============
-        function quitApp() {
-            fetch('/shutdown').then(() => window.close());
-        }
-        
-        window.addEventListener('beforeunload', function() {
-            navigator.sendBeacon('/shutdown');
-        });
-        
-        window.addEventListener('unload', function() {
-            navigator.sendBeacon('/shutdown');
-        });
-        
-        // ============ AUTO-UPDATE ============
-        async function checkUpdate() {
-            try {
-                const resp = await fetch('/check-update');
-                const data = await resp.json();
-                if (data.hasUpdate) {
-                    showUpdateModal(data);
-                }
-            } catch(e) {
-                console.log('Update check failed:', e);
-            }
-        }
-        
-        function showUpdateModal(data) {
-            const modal = document.createElement('div');
-            modal.id = 'updateModal';
-            modal.style.cssText = `
-                position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-                background: rgba(0,0,0,0.8); display: flex;
-                align-items: center; justify-content: center; z-index: 9999;
-            `;
-            
-            const content = document.createElement('div');
-            content.style.cssText = `
-                background: #2c2c2e; padding: 30px; border-radius: 16px;
-                max-width: 450px; text-align: center; color: #fff;
-            `;
-            
-            const title = translations[currentLang].updateAvailable || 'Mise à jour disponible';
-            const current = currentLang === 'fr' ? 'Version actuelle' : 'Current version';
-            const newVer = currentLang === 'fr' ? 'Nouvelle version' : 'New version';
-            
-            // Check if we can auto-update or need manual download
-            if (data.canUpdate === false) {
-                // No Python available - show download instructions
-                const downloadMsg = currentLang === 'fr' 
-                    ? 'Python non installé. Téléchargez la nouvelle version manuellement.'
-                    : 'Python not installed. Please download the new version manually.';
-                const downloadBtn = currentLang === 'fr' ? 'Télécharger' : 'Download';
-                const laterBtn = currentLang === 'fr' ? 'Plus tard' : 'Later';
+                const result = await api('send_sms', { phone, message });
+                const time = new Date().toLocaleTimeString();
                 
-                content.innerHTML = `
-                    <h2 style="margin-bottom: 15px;">🔄 ${title}</h2>
-                    <p style="color: #888; margin-bottom: 10px;">${current}: ${data.currentVersion}</p>
-                    <p style="color: #30d158; font-weight: bold; margin-bottom: 15px;">${newVer}: ${data.latestVersion}</p>
-                    ${data.changelog ? `<p style="color: #aaa; font-size: 14px; margin-bottom: 15px;">${data.changelog}</p>` : ''}
-                    <p style="color: #ff9f0a; font-size: 13px; margin-bottom: 20px;">${downloadMsg}</p>
-                    <div style="display: flex; gap: 10px; justify-content: center;">
-                        <button onclick="window.open('https://gist.github.com/HugoOtth/3e89759cac04be452c935c90b5733eea', '_blank'); closeUpdateModal();" style="
-                            background: #30d158; color: #000; border: none; padding: 12px 24px;
-                            border-radius: 8px; font-weight: bold; cursor: pointer;
-                        ">${downloadBtn}</button>
-                        <button onclick="closeUpdateModal()" style="
-                            background: #48484a; color: #fff; border: none; padding: 12px 24px;
-                            border-radius: 8px; cursor: pointer;
-                        ">${laterBtn}</button>
-                    </div>
-                `;
-            } else {
-                // Can auto-update
-                const updateBtn = currentLang === 'fr' ? 'Mettre à jour' : 'Update';
-                const laterBtn = currentLang === 'fr' ? 'Plus tard' : 'Later';
-                
-                content.innerHTML = `
-                    <h2 style="margin-bottom: 15px;">🔄 ${title}</h2>
-                    <p style="color: #888; margin-bottom: 10px;">${current}: ${data.currentVersion}</p>
-                    <p style="color: #30d158; font-weight: bold; margin-bottom: 15px;">${newVer}: ${data.latestVersion}</p>
-                    ${data.changelog ? `<p style="color: #aaa; font-size: 14px; margin-bottom: 20px;">${data.changelog}</p>` : ''}
-                    <div style="display: flex; gap: 10px; justify-content: center;">
-                        <button onclick="applyUpdate()" style="
-                            background: #30d158; color: #000; border: none; padding: 12px 24px;
-                            border-radius: 8px; font-weight: bold; cursor: pointer;
-                        ">${updateBtn}</button>
-                        <button onclick="closeUpdateModal()" style="
-                            background: #48484a; color: #fff; border: none; padding: 12px 24px;
-                            border-radius: 8px; cursor: pointer;
-                        ">${laterBtn}</button>
-                    </div>
-                `;
-            }
-            
-            modal.appendChild(content);
-            document.body.appendChild(modal);
-        }
-        
-        function closeUpdateModal() {
-            const modal = document.getElementById('updateModal');
-            if (modal) modal.remove();
-        }
-        
-        async function applyUpdate() {
-            const modal = document.getElementById('updateModal');
-            if (modal) {
-                modal.querySelector('div').innerHTML = `
-                    <h2 style="margin-bottom: 15px;">⏳ ${currentLang === 'fr' ? 'Téléchargement...' : 'Downloading...'}</h2>
-                    <p style="color: #888;">${currentLang === 'fr' ? 'Veuillez patienter' : 'Please wait'}</p>
-                `;
-            }
-            
-            try {
-                const resp = await fetch('/apply-update', { method: 'POST' });
-                const data = await resp.json();
-                
-                if (data.success) {
-                    if (modal) {
-                        modal.querySelector('div').innerHTML = `
-                            <h2 style="margin-bottom: 15px;">✅ ${currentLang === 'fr' ? 'Mise à jour installée!' : 'Update installed!'}</h2>
-                            <p style="color: #888; margin-bottom: 20px;">${currentLang === 'fr' ? 'Relancez l'"'"'application' : 'Please restart the application'}</p>
-                            <button onclick="quitApp()" style="
-                                background: #30d158; color: #000; border: none; padding: 12px 24px;
-                                border-radius: 8px; font-weight: bold; cursor: pointer;
-                            ">${currentLang === 'fr' ? 'Quitter' : 'Quit'}</button>
-                        `;
-                    }
+                if (result.success) {
+                    sent++;
+                    log.innerHTML += `<div class="log-entry"><span class="log-time">${time}</span><span>✅</span><span class="log-message">${contact.firstname || 'Contact'} → ${phone}</span></div>`;
                 } else {
-                    if (modal) {
-                        modal.querySelector('div').innerHTML = `
-                            <h2 style="margin-bottom: 15px;">❌ ${currentLang === 'fr' ? 'Erreur' : 'Error'}</h2>
-                            <p style="color: #ff453a;">${data.error || 'Unknown error'}</p>
-                            <button onclick="closeUpdateModal()" style="
-                                background: #48484a; color: #fff; border: none; padding: 12px 24px;
-                                border-radius: 8px; cursor: pointer; margin-top: 15px;
-                            ">OK</button>
-                        `;
-                    }
+                    failed++;
+                    log.innerHTML += `<div class="log-entry"><span class="log-time">${time}</span><span>❌</span><span class="log-message">${contact.firstname || 'Contact'}: ${result.error || 'Failed'}</span></div>`;
                 }
-            } catch(e) {
-                console.error('Update failed:', e);
-                closeUpdateModal();
+                
+                log.scrollTop = log.scrollHeight;
+                
+                const progress = ((i + 1) / total * 100).toFixed(0);
+                document.getElementById('progress-fill').style.width = progress + '%';
+                document.getElementById('progress-current').textContent = `${i + 1} / ${total}`;
+                document.getElementById('progress-percent').textContent = progress + '%';
             }
-        }
+            
+            document.getElementById('final-success').textContent = sent;
+            document.getElementById('final-failed').textContent = failed;
+            document.getElementById('final-skipped').textContent = skippedContacts.length;
+            showScreen('screen-complete');
+        });
         
-        // Check for updates on page load
-        setTimeout(checkUpdate, 1000);
+        document.getElementById('btn-stop').addEventListener('click', () => { stopped = true; });
+        
+        document.getElementById('btn-new-campaign').addEventListener('click', () => {
+            contacts = [];
+            validatedContacts = [];
+            skippedContacts = [];
+            messageTemplate = '';
+            messageInput.value = '';
+            document.getElementById('file-name').classList.add('hidden');
+            fileDropZone.classList.remove('has-file');
+            document.getElementById('csv-preview').classList.add('hidden');
+            document.getElementById('message-preview-box').classList.add('hidden');
+            document.getElementById('btn-to-step3').disabled = true;
+            showScreen('screen-step1');
+        });
+        
+        // ===== START =====
+        init();
     </script>
 </body>
-</html>'''
+</html>
+'''
 
+# ============================================================================
+# KEYCHAIN FUNCTIONS
+# ============================================================================
 
-class SMSHandler(http.server.SimpleHTTPRequestHandler):
-    pending_update = None
-    current_version = SCRIPT_VERSION
-    
-    def do_GET(self):
-        if self.path == '/' or self.path == '/index.html':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/html')
-            self.end_headers()
-            self.wfile.write(HTML_PAGE.encode())
-        elif self.path == '/shutdown':
-            self.send_response(200)
-            self.send_header('Content-type', 'text/plain')
-            self.end_headers()
-            self.wfile.write(b'OK')
-            # Shutdown server in background thread
-            threading.Thread(target=self.server.shutdown, daemon=True).start()
-        elif self.path == '/check-update':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            if SMSHandler.pending_update:
-                # Check if we can actually apply updates (need Python for bundled app)
-                can_update = True
-                update_method = 'script'  # Can update the script file
-                
-                if is_bundled_app() and not find_system_python():
-                    can_update = False
-                    update_method = 'download'  # Must download new app
-                
-                response = {
-                    'hasUpdate': True,
-                    'canUpdate': can_update,
-                    'updateMethod': update_method,
-                    'currentVersion': SMSHandler.current_version,
-                    'latestVersion': SMSHandler.pending_update.get('version', '?'),
-                    'changelog': SMSHandler.pending_update.get('changelog', '')
-                }
-            else:
-                response = {'hasUpdate': False}
-            
-            self.wfile.write(json.dumps(response).encode())
-        else:
-            self.send_error(404)
-    
-    def do_POST(self):
-        if self.path == '/send':
-            content_length = int(self.headers['Content-Length'])
-            post_data = self.rfile.read(content_length)
-            data = json.loads(post_data.decode())
-            
-            
-            success = send_via_applescript(data['phone'], data['message'])
-            
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            self.wfile.write(json.dumps({'success': success}).encode())
-        
-        elif self.path == '/apply-update':
-            self.send_response(200)
-            self.send_header('Content-type', 'application/json')
-            self.end_headers()
-            
-            try:
-                if download_update():
-                    response = {'success': True}
-                else:
-                    response = {'success': False, 'error': 'Download failed'}
-            except Exception as e:
-                response = {'success': False, 'error': str(e)}
-            
-            self.wfile.write(json.dumps(response).encode())
-    
-    def log_message(self, format, *args):
+def keychain_get(key):
+    """Get a value from macOS Keychain."""
+    try:
+        result = subprocess.run(
+            ["security", "find-generic-password", "-s", CONFIG["keychain_service"], "-a", key, "-w"],
+            capture_output=True, text=True
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+    except:
         pass
+    return None
 
-
-def send_via_applescript(phone, message):
-    """Send a single SMS using AppleScript and Messages app"""
-    escaped_message = message.replace('\\', '\\\\').replace('"', '\\"')
+def keychain_set(key, value):
+    """Set a value in macOS Keychain."""
+    try:
+        # Delete existing entry first
+        subprocess.run(
+            ["security", "delete-generic-password", "-s", CONFIG["keychain_service"], "-a", key],
+            capture_output=True, text=True
+        )
+    except:
+        pass
     
-    # Use SMS service instead of iMessage to ensure delivery to non-iMessage users
-    applescript = f'''
+    try:
+        result = subprocess.run(
+            ["security", "add-generic-password", "-s", CONFIG["keychain_service"], "-a", key, "-w", value],
+            capture_output=True, text=True
+        )
+        return result.returncode == 0
+    except:
+        return False
+
+def keychain_contains(key):
+    """Check if a key exists in macOS Keychain."""
+    return keychain_get(key) is not None
+
+# ============================================================================
+# AUTO-UPDATE SYSTEM
+# ============================================================================
+
+def get_app_path():
+    """Get the path to the current .app bundle."""
+    if getattr(sys, 'frozen', False):
+        # Running as compiled app
+        # The executable is inside .app/Contents/MacOS/
+        exe_path = sys.executable
+        # Go up to .app level: MacOS -> Contents -> .app
+        app_path = os.path.dirname(os.path.dirname(os.path.dirname(exe_path)))
+        if app_path.endswith('.app'):
+            return app_path
+    return None
+
+def check_for_update():
+    """Check if a new version is available."""
+    try:
+        req = Request(CONFIG["update_url"], headers={"Cache-Control": "no-cache"})
+        with urlopen(req, timeout=10) as response:
+            data = json.loads(response.read().decode('utf-8'))
+            remote_version = data.get("version", "0.0.0")
+            download_url = data.get("download_url", CONFIG["download_url"])
+            
+            # Compare versions
+            def parse_version(v):
+                return tuple(map(int, v.split('.')))
+            
+            if parse_version(remote_version) > parse_version(VERSION):
+                return {
+                    "available": True,
+                    "version": remote_version,
+                    "download_url": download_url,
+                    "notes": data.get("notes", "")
+                }
+            return {"available": False}
+    except Exception as e:
+        return {"available": False, "error": str(e)}
+
+def perform_update(download_url):
+    """Download and install the update, then relaunch."""
+    import tempfile
+    import zipfile
+    import shutil
+    
+    app_path = get_app_path()
+    if not app_path:
+        return {"success": False, "error": "Cannot determine app location"}
+    
+    try:
+        # Create temp directory
+        temp_dir = tempfile.mkdtemp(prefix="sms_campaign_update_")
+        zip_path = os.path.join(temp_dir, "update.zip")
+        
+        # Use curl to download (handles GitHub redirects properly)
+        result = subprocess.run(
+            ["curl", "-L", "-o", zip_path, "-f", "--max-time", "120", download_url],
+            capture_output=True, text=True
+        )
+        
+        if result.returncode != 0:
+            return {"success": False, "error": f"Download failed: {result.stderr}"}
+        
+        # Extract the zip
+        extract_dir = os.path.join(temp_dir, "extracted")
+        with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+            zip_ref.extractall(extract_dir)
+        
+        # Find the .app in extracted content
+        new_app_path = None
+        for item in os.listdir(extract_dir):
+            if item.endswith('.app'):
+                new_app_path = os.path.join(extract_dir, item)
+                break
+        
+        # Also check for __MACOSX folder issue
+        if not new_app_path:
+            for root, dirs, files in os.walk(extract_dir):
+                for d in dirs:
+                    if d.endswith('.app'):
+                        new_app_path = os.path.join(root, d)
+                        break
+                if new_app_path:
+                    break
+        
+        if not new_app_path:
+            return {"success": False, "error": "No .app found in update"}
+        
+        # Create update script that runs after we quit
+        app_name = os.path.basename(app_path)
+        parent_dir = os.path.dirname(app_path)
+        
+        update_script = f'''#!/bin/bash
+sleep 2
+rm -rf "{app_path}"
+cp -R "{new_app_path}" "{parent_dir}/"
+xattr -cr "{os.path.join(parent_dir, os.path.basename(new_app_path))}"
+open "{os.path.join(parent_dir, os.path.basename(new_app_path))}"
+rm -rf "{temp_dir}"
+'''
+        
+        script_path = os.path.join(temp_dir, "update.sh")
+        with open(script_path, 'w') as f:
+            f.write(update_script)
+        os.chmod(script_path, 0o755)
+        
+        # Run the update script in background and quit
+        subprocess.Popen([script_path], start_new_session=True)
+        
+        return {"success": True, "message": "Update starting, app will relaunch..."}
+        
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+# ============================================================================
+# DEVICE FINGERPRINT
+# ============================================================================
+
+def get_device_fingerprint():
+    """Get or create a unique device fingerprint stored in Keychain."""
+    device_id = keychain_get(CONFIG["keychain_device_key"])
+    if device_id:
+        return device_id
+    
+    # Generate new device ID
+    device_id = str(uuid.uuid4())
+    keychain_set(CONFIG["keychain_device_key"], device_id)
+    return device_id
+
+# ============================================================================
+# AUTHORIZATION
+# ============================================================================
+
+def read_auth_code():
+    """Read stored auth code from Keychain."""
+    return keychain_get(CONFIG["keychain_auth_key"])
+
+def write_auth_code(code):
+    """Write auth code to Keychain."""
+    return keychain_set(CONFIG["keychain_auth_key"], code)
+
+def verify_code_with_webhook(code):
+    """Verify activation code with the n8n webhook."""
+    device_id = get_device_fingerprint()
+    
+    payload = {
+        "code": code.strip(),
+        "device_id": device_id,
+        "device_type": "mac",  # Used to store in macbook_id column
+        "platform": "mac",
+        "version": VERSION
+    }
+    
+    try:
+        req = Request(
+            CONFIG["webhook_url"],
+            data=json.dumps(payload).encode('utf-8'),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        
+        with urlopen(req, timeout=30) as response:
+            result = json.loads(response.read().decode('utf-8'))
+            return result.get("valid", False), result.get("message", "Unknown error")
+    except URLError as e:
+        return False, f"Network error: {str(e)}"
+    except Exception as e:
+        return False, f"Error: {str(e)}"
+
+def check_authorization():
+    """Check if the app is authorized."""
+    stored_code = read_auth_code()
+    if not stored_code:
+        return False
+    
+    # Verify with webhook
+    valid, message = verify_code_with_webhook(stored_code)
+    return valid
+
+def activate(code):
+    """Activate with a new code."""
+    valid, message = verify_code_with_webhook(code)
+    if valid:
+        write_auth_code(code.strip())
+        return True, "Activation successful!"
+    return False, message
+
+# ============================================================================
+# CSV PARSING
+# ============================================================================
+
+def fix_french_accents(text):
+    """Fix common French accent encoding issues."""
+    if not text:
+        return text
+    for bad, good in KNOWN_REPLACEMENTS.items():
+        text = text.replace(bad, good)
+    return text
+
+def detect_separator(content):
+    """Detect the CSV separator."""
+    first_lines = content.split('\n')[:5]
+    sample = '\n'.join(first_lines)
+    
+    separators = [(',', 0), (';', 0), ('\t', 0), ('|', 0)]
+    
+    for i, (sep, _) in enumerate(separators):
+        count = sample.count(sep)
+        separators[i] = (sep, count)
+    
+    separators.sort(key=lambda x: x[1], reverse=True)
+    return separators[0][0] if separators[0][1] > 0 else ','
+
+def normalize_phone(phone):
+    """Normalize a phone number."""
+    if not phone:
+        return None
+    
+    # Remove all non-digit characters except +
+    cleaned = re.sub(r'[^\d+]', '', str(phone))
+    
+    # Handle various formats
+    if cleaned.startswith('+'):
+        return cleaned
+    elif cleaned.startswith('00'):
+        return '+' + cleaned[2:]
+    elif cleaned.startswith('0') and len(cleaned) == 10:
+        return '+33' + cleaned[1:]
+    elif len(cleaned) == 9 and not cleaned.startswith('0'):
+        return '+33' + cleaned
+    elif len(cleaned) >= 10:
+        return '+' + cleaned
+    
+    return None
+
+def is_valid_phone(phone):
+    """Check if a phone number is valid."""
+    if not phone:
+        return False
+    normalized = normalize_phone(phone)
+    if not normalized:
+        return False
+    # Must have at least 10 digits
+    digits = re.sub(r'\D', '', normalized)
+    return len(digits) >= 10
+
+def get_phones_from_value(value):
+    """Extract all phone numbers from a cell value."""
+    if not value:
+        return []
+    
+    phones = []
+    value = str(value).strip()
+    
+    # Try splitting by common separators
+    for sep in CONFIG["phone_separators"]:
+        if sep in value:
+            parts = value.split(sep)
+            for part in parts:
+                phone = normalize_phone(part.strip())
+                if phone and is_valid_phone(phone):
+                    phones.append(phone)
+            if phones:
+                return phones
+    
+    # Try as single phone
+    phone = normalize_phone(value)
+    if phone and is_valid_phone(phone):
+        return [phone]
+    
+    return []
+
+def parse_csv(content, filename=""):
+    """Parse CSV content and extract contacts with firstname, lastname, and phones."""
+    # Fix French accents
+    content = fix_french_accents(content)
+    
+    # Detect separator
+    sep = detect_separator(content)
+    
+    # Parse CSV
+    try:
+        reader = csv.DictReader(StringIO(content), delimiter=sep)
+        headers = [h.lower().strip() for h in (reader.fieldnames or [])]
+        
+        # Find columns
+        phone_col = None
+        name_col = None
+        firstname_col = None
+        lastname_col = None
+        
+        for h in headers:
+            original_header = reader.fieldnames[headers.index(h)]
+            h_lower = h.lower()
+            
+            # Phone column
+            if not phone_col:
+                for pc in CONFIG["phone_columns"]:
+                    if pc in h_lower:
+                        phone_col = original_header
+                        break
+            
+            # Firstname column (check first, before generic name)
+            if not firstname_col:
+                for fc in CONFIG["firstname_columns"]:
+                    if fc in h_lower or h_lower == fc:
+                        firstname_col = original_header
+                        break
+            
+            # Lastname column
+            if not lastname_col:
+                for lc in CONFIG["lastname_columns"]:
+                    # Be careful: "nom" could match both firstname and lastname
+                    # Only match lastname if it's a dedicated lastname column
+                    if lc in h_lower and h_lower not in ["prenom", "prénom", "firstname", "first_name"]:
+                        # Check if it's specifically a lastname column
+                        if any(x in h_lower for x in ["last", "famille", "family", "surname"]) or (h_lower == "nom" and firstname_col):
+                            lastname_col = original_header
+                            break
+            
+            # Generic name column (fallback)
+            if not name_col:
+                for nc in CONFIG["name_columns"]:
+                    if nc in h_lower:
+                        name_col = original_header
+                        break
+        
+        # If we found "nom" and no firstname, it's probably first name
+        if not firstname_col and name_col:
+            firstname_col = name_col
+            name_col = None
+        
+        if not phone_col:
+            # Try to find any column with phone-like data
+            reader = csv.DictReader(StringIO(content), delimiter=sep)
+            for row in reader:
+                for col, val in row.items():
+                    if get_phones_from_value(val):
+                        phone_col = col
+                        break
+                if phone_col:
+                    break
+        
+        if not phone_col:
+            return {"success": False, "error": "No phone column found"}
+        
+        # Parse contacts
+        reader = csv.DictReader(StringIO(content), delimiter=sep)
+        contacts = []
+        
+        for row in reader:
+            phones = get_phones_from_value(row.get(phone_col, ""))
+            
+            # Get firstname
+            if firstname_col:
+                firstname = fix_french_accents(row.get(firstname_col, "")).strip()
+            elif name_col:
+                # Split full name if we only have a name column
+                full_name = fix_french_accents(row.get(name_col, "")).strip()
+                parts = full_name.split(None, 1)
+                firstname = parts[0] if parts else ""
+            else:
+                firstname = ""
+            
+            # Get lastname
+            if lastname_col:
+                lastname = fix_french_accents(row.get(lastname_col, "")).strip()
+            elif name_col and not firstname_col:
+                # Split full name
+                full_name = fix_french_accents(row.get(name_col, "")).strip()
+                parts = full_name.split(None, 1)
+                lastname = parts[1] if len(parts) > 1 else ""
+            else:
+                lastname = ""
+            
+            # Also include full name for backwards compatibility
+            name = firstname
+            if lastname:
+                name = f"{firstname} {lastname}".strip()
+            # Store raw phone for debugging
+            raw_phone = row.get(phone_col, "")
+            
+            contacts.append({
+                "name": name,
+                "firstname": firstname,
+                "lastname": lastname,
+                "phones": phones,
+                "raw_phone": raw_phone,
+                "phone_source": "principal" if phones else "vide"
+            })
+        
+        # Determine separator name
+        sep_name = "comma"
+        if sep == ';':
+            sep_name = "semicolon"
+        elif sep == '\t':
+            sep_name = "tab"
+        
+        return {"success": True, "contacts": contacts, "separator": sep_name}
+    
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+# ============================================================================
+# SMS SENDING
+# ============================================================================
+
+def send_imessage(phone, message):
+    """Send an iMessage using AppleScript."""
+    # Escape for AppleScript
+    message_escaped = message.replace('\\', '\\\\').replace('"', '\\"')
+    phone_escaped = phone.replace('\\', '\\\\').replace('"', '\\"')
+    
+    script = f'''
     tell application "Messages"
-        set targetService to 1st account whose service type = SMS
-        set targetBuddy to participant "{phone}" of targetService
-        send "{escaped_message}" to targetBuddy
+        set targetService to 1st account whose service type = iMessage
+        set targetBuddy to participant "{phone_escaped}" of targetService
+        send "{message_escaped}" to targetBuddy
     end tell
     '''
     
     try:
         result = subprocess.run(
-            ['osascript', '-e', applescript],
-            capture_output=True,
-            text=True,
-            timeout=30
+            ["osascript", "-e", script],
+            capture_output=True, text=True, timeout=30
         )
-        return result.returncode == 0
+        if result.returncode == 0:
+            return {"success": True}
+        else:
+            return {"success": False, "error": result.stderr.strip() or "Unknown error"}
+    except subprocess.TimeoutExpired:
+        return {"success": False, "error": "Timeout"}
     except Exception as e:
-        print(f"Error sending to {phone}: {e}")
-        return False
+        return {"success": False, "error": str(e)}
 
+# ============================================================================
+# WEB SERVER
+# ============================================================================
 
-class ReusableTCPServer(socketserver.TCPServer):
-    """TCP Server that allows port reuse immediately after shutdown"""
-    allow_reuse_address = True
-
-
-def check_and_apply_updates() -> bool:
-    """
-    Check for updates and handle them.
-    Returns True if we should exit (update applied), False to continue.
-    """
-    # First, check if there's a newer cached version we should use
-    cached_version = get_cached_version()
-    if cached_version and is_newer_version(cached_version, SCRIPT_VERSION):
-        # We're running an old version but a newer one is cached
-        # If we're not already running FROM the cache, switch to it
-        current_script = Path(sys.argv[0]).resolve() if sys.argv else None
-        if current_script != CACHED_SCRIPT.resolve():
-            print(f"Newer cached version found ({cached_version} > {SCRIPT_VERSION}), launching it...")
-            run_cached_script()
-            return True  # Won't reach here due to exec
+class RequestHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass  # Suppress logging
     
-    # Check online for updates
-    update_info = check_for_updates()
-    if update_info:
-        latest_version = update_info.get('version', '?')
-        changelog = update_info.get('changelog', '')
-        print(f"Update available: {latest_version} (current: {SCRIPT_VERSION})")
-        
-        # Return update info to show in UI
-        return update_info
+    def do_GET(self):
+        if self.path == '/' or self.path == '/index.html':
+            html = HTML_TEMPLATE.replace('{{VERSION}}', VERSION)
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/html')
+            self.end_headers()
+            self.wfile.write(html.encode('utf-8'))
+        else:
+            self.send_error(404)
     
-    return None
+    def do_POST(self):
+        if self.path == '/api':
+            content_length = int(self.headers.get('Content-Length', 0))
+            body = self.rfile.read(content_length).decode('utf-8')
+            
+            try:
+                data = json.loads(body)
+                action = data.get('action', '')
+                
+                if action == 'check_auth':
+                    authorized = check_authorization()
+                    result = {"authorized": authorized}
+                
+                elif action == 'activate':
+                    code = data.get('code', '')
+                    success, message = activate(code)
+                    result = {"success": success, "error": message if not success else None}
+                
+                elif action == 'parse_csv':
+                    content = data.get('content', '')
+                    filename = data.get('filename', '')
+                    result = parse_csv(content, filename)
+                
+                elif action == 'send_sms':
+                    phone = data.get('phone', '')
+                    message = data.get('message', '')
+                    result = send_imessage(phone, message)
+                    if result["success"]:
+                        # Add delay between messages
+                        time.sleep(CONFIG["message_delay"])
+                
+                elif action == 'check_update':
+                    result = check_for_update()
+                
+                elif action == 'perform_update':
+                    download_url = data.get('download_url', CONFIG["download_url"])
+                    result = perform_update(download_url)
+                    if result.get("success"):
+                        # Quit the app after a short delay to let response send
+                        def quit_app():
+                            time.sleep(0.5)
+                            os._exit(0)
+                        threading.Thread(target=quit_app, daemon=True).start()
+                
+                else:
+                    result = {"error": "Unknown action"}
+                
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps(result).encode('utf-8'))
+            
+            except Exception as e:
+                self.send_response(500)
+                self.send_header('Content-Type', 'application/json')
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": str(e)}).encode('utf-8'))
+        else:
+            self.send_error(404)
 
+def find_free_port():
+    """Find a free port to use."""
+    import socket
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        return s.getsockname()[1]
 
 def main():
-    # Check for updates before starting
-    update_info = check_and_apply_updates()
+    """Main entry point using native window."""
+    import webview
     
-    # Kill any existing process on the port
-    os.system(f"lsof -ti:{PORT} | xargs kill -9 2>/dev/null")
+    port = find_free_port()
+    server = HTTPServer(('127.0.0.1', port), RequestHandler)
     
-    # Small delay to ensure port is released
-    import time
-    time.sleep(0.5)
+    # Start server in background thread
+    server_thread = threading.Thread(target=server.serve_forever, daemon=True)
+    server_thread.start()
     
-    # Store update info for the handler to access
-    SMSHandler.pending_update = update_info
-    SMSHandler.current_version = SCRIPT_VERSION
+    url = f'http://127.0.0.1:{port}'
+    print(f"Starting SMS Campaign v{VERSION}")
     
-    with ReusableTCPServer(("", PORT), SMSHandler) as httpd:
-        url = f"http://localhost:{PORT}"
-        print(f"SMS Campaign v{SCRIPT_VERSION} running at {url}")
-        print("Press Ctrl+C to stop")
-        
-        webbrowser.open(url)
-        
-        try:
-            httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nShutting down...")
-            httpd.shutdown()
-
+    # Create native window
+    webview.create_window(
+        'SMS Campaign',
+        url,
+        width=650,
+        height=800,
+        resizable=True,
+        min_size=(500, 600)
+    )
+    webview.start()
+    
+    # Cleanup
+    server.shutdown()
 
 if __name__ == "__main__":
     main()
