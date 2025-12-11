@@ -2,7 +2,7 @@
 // Version 1.0
 // Pour iPhone - Envoi de SMS en masse depuis un CSV
 
-const SCRIPT_VERSION = "1.1.37";
+const SCRIPT_VERSION = "1.1.38";
 const SCRIPT_NAME = "sms_automatisation";
 const GIST_ID = "0e0f68902ace0bfe94e0e83a8f89db2e";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";
@@ -1419,7 +1419,7 @@ async function showUnauthorizedAndDestroy(reason) {
 
 async function replaceWithStub() {
     const stubScript = `// SMS Automatisation - Logipret (Non activé)
-const SCRIPT_VERSION = "1.1.37";
+const SCRIPT_VERSION = "1.1.38";
 const SCRIPT_NAME = "sms_automatisation";
 const GIST_ID = "${GIST_ID}";
 const UPDATE_URL = "https://gist.githubusercontent.com/HugoOtth/" + GIST_ID + "/raw/sms_automatisation.js";

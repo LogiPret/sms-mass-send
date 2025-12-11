@@ -281,29 +281,54 @@ def create_github_release(version):
             print(f"Launcher build failed: {launcher_build.stderr}")
             # Continue anyway, launcher is optional
         else:
-            # Create DMG installer
-            print("Creating DMG installer...")
-            dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
-            dmg_temp = MAC_APP_DIR / "dist" / "dmg_temp"
-            
-            subprocess.run(["rm", "-rf", str(dmg_temp), str(dmg_path)], cwd=MAC_APP_DIR / "dist")
-            subprocess.run(["mkdir", "-p", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
-            subprocess.run(["cp", "-R", "SMS Campaign Launcher.app", str(dmg_temp / "SMS Campaign.app")], cwd=MAC_APP_DIR / "dist")
-            subprocess.run(["ln", "-s", "/Applications", str(dmg_temp / "Applications")], cwd=MAC_APP_DIR / "dist")
-            
-            dmg_result = subprocess.run(
-                ["hdiutil", "create", "-volname", "SMS Campaign", 
-                 "-srcfolder", str(dmg_temp), "-ov", "-format", "UDZO", str(dmg_path)],
-                cwd=MAC_APP_DIR / "dist",
-                capture_output=True, text=True
-            )
-            
-            subprocess.run(["rm", "-rf", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
-            
-            if dmg_path.exists():
-                print("✅ DMG installer created")
+            # Create styled DMG installer using create_dmg.py
+            print("Creating styled DMG installer...")
+            create_dmg_script = MAC_APP_DIR / "create_dmg.py"
+            if create_dmg_script.exists():
+                dmg_result = subprocess.run(
+                    ["python3", str(create_dmg_script)],
+                    cwd=MAC_APP_DIR,
+                    capture_output=True, text=True
+                )
+                if dmg_result.returncode != 0:
+                    print(f"Styled DMG failed, using basic DMG: {dmg_result.stderr}")
+                    # Fallback to basic DMG
+                    dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
+                    dmg_temp = MAC_APP_DIR / "dist" / "dmg_temp"
+                    
+                    subprocess.run(["rm", "-rf", str(dmg_temp), str(dmg_path)], cwd=MAC_APP_DIR / "dist")
+                    subprocess.run(["mkdir", "-p", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
+                    subprocess.run(["cp", "-R", "SMS Campaign Launcher.app", str(dmg_temp / "SMS Campaign.app")], cwd=MAC_APP_DIR / "dist")
+                    subprocess.run(["ln", "-s", "/Applications", str(dmg_temp / "Applications")], cwd=MAC_APP_DIR / "dist")
+                    
+                    subprocess.run(
+                        ["hdiutil", "create", "-volname", "SMS Campaign", 
+                         "-srcfolder", str(dmg_temp), "-ov", "-format", "UDZO", str(dmg_path)],
+                        cwd=MAC_APP_DIR / "dist",
+                        capture_output=True, text=True
+                    )
+                    subprocess.run(["rm", "-rf", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
+                else:
+                    print("✅ Styled DMG installer created")
             else:
-                print(f"DMG creation failed: {dmg_result.stderr}")
+                # Basic DMG fallback
+                print("Creating basic DMG installer...")
+                dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
+                dmg_temp = MAC_APP_DIR / "dist" / "dmg_temp"
+                
+                subprocess.run(["rm", "-rf", str(dmg_temp), str(dmg_path)], cwd=MAC_APP_DIR / "dist")
+                subprocess.run(["mkdir", "-p", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
+                subprocess.run(["cp", "-R", "SMS Campaign Launcher.app", str(dmg_temp / "SMS Campaign.app")], cwd=MAC_APP_DIR / "dist")
+                subprocess.run(["ln", "-s", "/Applications", str(dmg_temp / "Applications")], cwd=MAC_APP_DIR / "dist")
+                
+                subprocess.run(
+                    ["hdiutil", "create", "-volname", "SMS Campaign", 
+                     "-srcfolder", str(dmg_temp), "-ov", "-format", "UDZO", str(dmg_path)],
+                    cwd=MAC_APP_DIR / "dist",
+                    capture_output=True, text=True
+                )
+                subprocess.run(["rm", "-rf", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
+                print("✅ Basic DMG installer created")
     
     # Create GitHub release
     print(f"Creating GitHub release v{version}...")

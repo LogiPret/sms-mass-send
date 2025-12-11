@@ -1,0 +1,37 @@
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# PyInstaller build artifacts
+mac_app/build/
+mac_app/dist/
+*.spec.bak
+
+# Build files
+*.pkg
+*.dmg
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Local config files (keep templates)
+.mac_gist_id
+.mac_build_number

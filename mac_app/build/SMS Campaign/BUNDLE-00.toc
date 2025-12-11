@@ -1,3 +1,0 @@
-([('SMS Campaign',
-   '/Users/hugootth/Workspace/logipret/sms_mass_send/mac_app/dist/SMS Campaign',
-   'EXECUTABLE')],)
