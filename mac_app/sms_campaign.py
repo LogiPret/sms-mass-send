@@ -20,6 +20,7 @@ from urllib.error import URLError
 from io import StringIO
 import time
 import ssl
+import webview  # Import at top level for PyInstaller
 
 # Create SSL context that doesn't verify certificates (needed for PyInstaller bundled apps)
 SSL_CONTEXT = ssl.create_default_context()
@@ -30,7 +31,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.6"
+VERSION = "2.4.7"
 BUILD = 1
 
 CONFIG = {
@@ -96,9 +97,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             min-height: 100vh;
             line-height: 1.5;
             -webkit-font-smoothing: antialiased;
+            overflow: hidden;
         }
         
-        .container { max-width: 650px; margin: 0 auto; padding: 30px 20px; }
+        .container { max-width: 1000px; margin: 0 auto; padding: 16px; }
         
         .header {
             text-align: center;
@@ -199,8 +201,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             font-family: inherit;
         }
         
+        textarea::placeholder, input::placeholder {
+            color: #4a4a4c;
+            opacity: 1;
+        }
+        
         input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2); }
-        textarea { min-height: 120px; resize: vertical; }
+        textarea { min-height: 120px; resize: none; }
         
         .btn {
             display: inline-flex;
@@ -410,7 +417,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .progress-text { display: flex; justify-content: space-between; margin-top: 8px; font-size: 14px; color: var(--text-secondary); }
         
         .log-container {
-            max-height: 250px;
+            max-height: 360px;
             overflow-y: auto;
             background: var(--bg-tertiary);
             border-radius: 12px;
@@ -424,6 +431,62 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .log-time { color: var(--text-secondary); font-size: 10px; white-space: nowrap; }
         .log-message { flex: 1; }
         
+        /* Confirmation Modal */
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+            backdrop-filter: blur(4px);
+        }
+        
+        .modal {
+            background: var(--bg-card);
+            border-radius: 16px;
+            padding: 24px;
+            border: 1px solid var(--border);
+            max-width: 400px;
+            width: 90%;
+            animation: modalIn 0.2s ease-out;
+        }
+        
+        @keyframes modalIn {
+            from { opacity: 0; transform: scale(0.95); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        
+        .modal-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 12px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .modal-message {
+            color: var(--text-secondary);
+            font-size: 14px;
+            margin-bottom: 20px;
+            line-height: 1.5;
+        }
+        
+        .modal-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .modal-buttons .btn { flex: 1; }
+        
+        .btn-warning { background: var(--warning); color: #000; }
+        .btn-warning:hover { opacity: 0.9; }
+        
         .alert { padding: 14px; border-radius: 12px; margin-bottom: 16px; display: flex; align-items: flex-start; gap: 10px; }
         .alert-error { background: rgba(255, 69, 58, 0.15); border: 1px solid rgba(255, 69, 58, 0.3); }
         .alert-success { background: rgba(48, 209, 88, 0.15); border: 1px solid rgba(48, 209, 88, 0.3); }
@@ -433,8 +496,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .alert-message { font-size: 13px; color: var(--text-secondary); }
         
         .hidden { display: none !important; }
-        .fade-in { animation: fadeIn 0.3s ease; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .fade-in { animation: fadeIn 0.3s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: scale(0.98) translateY(8px); } to { opacity: 1; transform: scale(1) translateY(0); } }
+        
+        .card { transition: all 0.25s ease-out; }
         
         .spinner { width: 20px; height: 20px; border: 2px solid transparent; border-top-color: currentColor; border-radius: 50%; animation: spin 0.8s linear infinite; }
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -480,15 +545,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
     <div class="container">
         <!-- Update Banner -->
         <div id="update-banner" class="update-banner hidden">
-            <span>🎉 <span data-i18n="update_available">Version</span> <strong id="update-version"></strong> <span data-i18n="available">disponible!</span></span>
+            <span><span data-i18n="update_available">Version</span> <strong id="update-version"></strong> <span data-i18n="available">disponible!</span></span>
             <button class="btn-update" id="btn-update" data-i18n="update_now">Mettre à jour</button>
         </div>
         
         <!-- Header -->
         <div class="header">
-            <span class="logo">📱</span>
             <div>
-                <div class="title">SMS Campaign</div>
+                <div class="title" id="app-title">Campagne SMS</div>
                 <div class="version">v{{VERSION}}</div>
             </div>
         </div>
@@ -502,7 +566,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <!-- Activation Screen -->
         <div id="screen-activation" class="card fade-in hidden">
             <div class="card-title">
-                <span>🔐</span>
                 <span data-i18n="activate_title">Activer votre licence</span>
             </div>
             <p style="color: var(--text-secondary); margin-bottom: 20px;" data-i18n="activate_desc">
@@ -516,7 +579,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <span data-i18n="activate_btn">Activer</span>
             </button>
             <div id="activation-error" class="alert alert-error hidden" style="margin-top: 16px;">
-                <span class="alert-icon">❌</span>
+                <span class="alert-icon"></span>
                 <div class="alert-content">
                     <div class="alert-title" data-i18n="activation_failed">Échec de l'activation</div>
                     <div class="alert-message" id="activation-error-msg"></div>
@@ -537,23 +600,13 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <input type="file" id="file-input" accept=".csv,.txt,.tsv">
             </div>
             <div id="csv-preview" class="hidden">
-                <p style="margin: 16px 0 8px;">
-                    <span class="contact-count" id="contact-count">0</span> <span data-i18n="contacts_found">contacts trouvés</span>
-                </p>
-                <div class="contacts-table-wrapper">
-                    <table class="contacts-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th data-i18n="col_firstname">Prénom</th>
-                                <th data-i18n="col_lastname">Nom</th>
-                                <th data-i18n="col_phones">Téléphone(s)</th>
-                            </tr>
-                        </thead>
-                        <tbody id="contacts-body"></tbody>
-                    </table>
+                <div class="alert alert-success" style="margin-top: 16px;">
+                    <span class="alert-icon"></span>
+                    <div class="alert-content">
+                        <div class="alert-title"><span class="contact-count" id="contact-count">0</span> <span data-i18n="contacts_loaded">contacts chargés</span></div>
+                    </div>
                 </div>
-                <button class="btn btn-primary btn-full" id="btn-to-step2" style="margin-top: 20px;" data-i18n="next_step">
+                <button class="btn btn-primary btn-full" id="btn-to-step2" style="margin-top: 12px;" data-i18n="next_step">
                     Continuer →
                 </button>
             </div>
@@ -568,17 +621,17 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             <div class="form-group">
                 <label data-i18n="insert_var">Insérer une variable :</label>
                 <div class="var-buttons">
-                    <button class="var-btn" id="btn-var-prenom">📝 Prénom</button>
-                    <button class="var-btn" id="btn-var-nom">📝 Nom</button>
+                    <button class="var-btn" id="btn-var-prenom">Prénom</button>
+                    <button class="var-btn" id="btn-var-nom">Nom</button>
                 </div>
             </div>
             <div class="form-group">
                 <label data-i18n="message_label">Votre message</label>
-                <textarea id="message-input" data-i18n-placeholder="message_placeholder" placeholder="Bonjour {{prenom}}, votre rendez-vous est confirmé!"></textarea>
+                <textarea id="message-input" data-i18n-placeholder="message_placeholder" placeholder="Bonjour {{prenom}}, votre rendez-vous est confirmé!" style="color: var(--text-primary);"></textarea>
             </div>
-            <div id="message-preview-box" class="hidden">
+            <div id="message-preview-box">
                 <label data-i18n="preview_label">Aperçu (premier contact) :</label>
-                <div class="message-preview" id="message-preview"></div>
+                <div class="message-preview" id="message-preview" style="min-height: 60px;"></div>
             </div>
             <div class="btn-group">
                 <button class="btn btn-secondary" id="btn-back-to-step1" data-i18n="back">← Retour</button>
@@ -594,7 +647,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
             
             <div class="separator-info" id="separator-info">
-                📄 <strong data-i18n="separator_detected">Séparateur détecté:</strong> <span id="separator-type">virgule</span>
+                <strong data-i18n="separator_detected">Séparateur détecté:</strong> <span id="separator-type">virgule</span>
             </div>
             
             <div class="dashboard-stats">
@@ -608,43 +661,48 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </div>
             </div>
             
-            <div class="section-title">✅ <span data-i18n="valid_contacts_title">Contacts valides</span></div>
-            <div class="contacts-table-wrapper" style="max-height: 200px;">
-                <table class="contacts-table">
-                    <thead>
-                        <tr>
-                            <th>#</th>
-                            <th data-i18n="col_firstname">Prénom</th>
-                            <th data-i18n="col_lastname">Nom</th>
-                            <th data-i18n="col_phone">Téléphone</th>
-                            <th data-i18n="col_source">Source</th>
-                        </tr>
-                    </thead>
-                    <tbody id="valid-contacts-body"></tbody>
-                </table>
-            </div>
-            
-            <div id="skipped-section">
-                <div class="section-title">❌ <span data-i18n="skipped_contacts_title">Contacts ignorés</span></div>
-                <div class="contacts-table-wrapper" style="max-height: 150px;">
-                    <table class="contacts-table">
-                        <thead>
-                            <tr>
-                                <th>#</th>
-                                <th data-i18n="col_reason">Raison</th>
-                                <th data-i18n="col_raw_firstname">Prénom brut</th>
-                                <th data-i18n="col_raw_phone">Tél brut</th>
-                            </tr>
-                        </thead>
-                        <tbody id="skipped-contacts-body"></tbody>
-                    </table>
+            <!-- Side by side contact lists -->
+            <div style="display: flex; gap: 20px; margin-bottom: 12px;">
+                <!-- Valid contacts column -->
+                <div style="flex: 1; min-width: 0;">
+                    <div class="section-title" style="margin-top: 0; margin-bottom: 8px;"><span data-i18n="valid_contacts_title">Contacts valides</span></div>
+                    <div class="contacts-table-wrapper" style="max-height: 220px; overflow-y: auto; overflow-x: hidden;">
+                        <table class="contacts-table" style="table-layout: fixed; width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;">#</th>
+                                    <th style="width: 30%;">Prénom</th>
+                                    <th style="width: 30%;">Nom</th>
+                                    <th style="width: 35%;">Téléphone</th>
+                                </tr>
+                            </thead>
+                            <tbody id="valid-contacts-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+                
+                <!-- Skipped contacts column -->
+                <div id="skipped-section" style="flex: 1; min-width: 0;">
+                    <div class="section-title" style="margin-top: 0; margin-bottom: 8px;"><span data-i18n="skipped_contacts_title">Contacts ignorés</span></div>
+                    <div class="contacts-table-wrapper" style="max-height: 220px; overflow-y: auto; overflow-x: hidden;">
+                        <table class="contacts-table" style="table-layout: fixed; width: 100%;">
+                            <thead>
+                                <tr>
+                                    <th style="width: 40px;">#</th>
+                                    <th style="width: 50%;">Raison</th>
+                                    <th style="width: 40%;">Info</th>
+                                </tr>
+                            </thead>
+                            <tbody id="skipped-contacts-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             
-            <div class="section-title">📝 <span data-i18n="message_preview_title">Aperçu du message</span></div>
-            <div class="message-preview" id="dashboard-preview"></div>
+            <div class="section-title" style="margin-top: 8px; margin-bottom: 8px;"><span data-i18n="message_preview_title">Aperçu du message</span></div>
+            <div class="message-preview" id="dashboard-preview" style="min-height: 40px; padding: 12px;"></div>
             
-            <div class="btn-group" style="margin-top: 20px;">
+            <div class="btn-group" style="margin-top: 12px;">
                 <button class="btn btn-secondary" id="btn-back-to-step2" data-i18n="back">← Retour</button>
                 <button class="btn btn-success" id="btn-send">📤 <span data-i18n="send_all">Envoyer tout</span></button>
             </div>
@@ -653,7 +711,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <!-- Sending Screen -->
         <div id="screen-sending" class="card fade-in hidden">
             <div class="card-title">
-                <span>📤</span>
                 <span data-i18n="sending_title">Envoi en cours...</span>
             </div>
             <div class="progress-container">
@@ -666,13 +723,44 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 </div>
             </div>
             <div class="log-container" id="send-log"></div>
-            <button class="btn btn-danger btn-full" id="btn-stop" style="margin-top: 16px;" data-i18n="stop_sending">⏹ Arrêter l'envoi</button>
+            <button class="btn btn-warning btn-full" id="btn-pause" style="margin-top: 16px;" data-i18n="pause_sending">Pause</button>
+        </div>
+        
+        <!-- Pause Modal -->
+        <div id="pause-modal" class="modal-overlay hidden">
+            <div class="modal">
+                <div class="modal-title"><span data-i18n="paused_title">Envoi en pause</span></div>
+                <div class="modal-message">
+                    <span data-i18n="paused_msg">L'envoi est en pause.</span>
+                    <br><br>
+                    <strong id="pause-progress"></strong>
+                </div>
+                <div class="modal-buttons">
+                    <button class="btn btn-danger" id="btn-cancel-sending" data-i18n="cancel_all">Annuler</button>
+                    <button class="btn btn-success" id="btn-resume"><span data-i18n="resume_btn">Reprendre</span></button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Confirmation Modal -->
+        <div id="confirm-modal" class="modal-overlay hidden">
+            <div class="modal">
+                <div class="modal-title"><span data-i18n="confirm_send_title">Confirmer l'envoi</span></div>
+                <div class="modal-message">
+                    <span data-i18n="confirm_send_msg">Vous êtes sur le point d'envoyer</span>
+                    <strong id="confirm-count">0</strong>
+                    <span data-i18n="confirm_send_msg2">messages. Cette action ne peut pas être annulée.</span>
+                </div>
+                <div class="modal-buttons">
+                    <button class="btn btn-secondary" id="btn-cancel-send" data-i18n="cancel">Annuler</button>
+                    <button class="btn btn-success" id="btn-confirm-send">📤 <span data-i18n="confirm_btn">Confirmer</span></button>
+                </div>
+            </div>
         </div>
         
         <!-- Complete Screen -->
         <div id="screen-complete" class="card fade-in hidden">
             <div class="card-title">
-                <span>✅</span>
                 <span data-i18n="complete_title">Campagne terminée!</span>
             </div>
             <div class="stats-grid">
@@ -689,7 +777,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="stat-label" data-i18n="stat_skipped">Ignorés</div>
                 </div>
             </div>
-            <button class="btn btn-primary btn-full" id="btn-new-campaign" style="margin-top: 20px;" data-i18n="new_campaign">📱 Nouvelle campagne</button>
+            <button class="btn btn-primary btn-full" id="btn-close-app" style="margin-top: 20px;" data-i18n="close_app">✕ Fermer</button>
         </div>
     </div>
     
@@ -706,6 +794,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 step1_title: "Sélectionnez vos contacts",
                 drop_csv: "Glissez votre fichier CSV ici ou cliquez pour parcourir",
                 contacts_found: "contacts trouvés",
+                contacts_loaded: "contacts chargés",
                 col_firstname: "Prénom",
                 col_lastname: "Nom", 
                 col_phones: "Téléphone(s)",
@@ -736,11 +825,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 send_all: "Envoyer tout",
                 sending_title: "Envoi en cours...",
                 stop_sending: "⏹ Arrêter l'envoi",
+                confirm_send_title: "Confirmer l'envoi",
+                confirm_send_msg: "Vous êtes sur le point d'envoyer",
+                confirm_send_msg2: "messages. Cette action ne peut pas être annulée.",
+                cancel: "Annuler",
+                confirm_btn: "Confirmer",
+                pause_sending: "Pause",
+                paused_title: "Envoi en pause",
+                paused_msg: "L'envoi est en pause.",
+                cancel_all: "Annuler",
+                resume_btn: "Reprendre",
+                paused_progress: "messages envoyés sur",
                 complete_title: "Campagne terminée!",
                 stat_sent: "Envoyés",
                 stat_failed: "Échoués",
                 stat_skipped: "Ignorés",
-                new_campaign: "📱 Nouvelle campagne",
+                close_app: "✕ Fermer",
                 update_available: "Version",
                 available: "disponible!",
                 update_now: "Mettre à jour",
@@ -764,6 +864,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 step1_title: "Select your contacts",
                 drop_csv: "Drop your CSV file here or click to browse",
                 contacts_found: "contacts found",
+                contacts_loaded: "contacts loaded",
                 col_firstname: "First Name",
                 col_lastname: "Last Name",
                 col_phones: "Phone(s)",
@@ -794,11 +895,22 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 send_all: "Send All",
                 sending_title: "Sending...",
                 stop_sending: "⏹ Stop Sending",
+                confirm_send_title: "Confirm Send",
+                confirm_send_msg: "You are about to send",
+                confirm_send_msg2: "messages. This action cannot be undone.",
+                cancel: "Cancel",
+                confirm_btn: "Confirm",
+                pause_sending: "Pause",
+                paused_title: "Sending paused",
+                paused_msg: "Sending is paused.",
+                cancel_all: "Cancel",
+                resume_btn: "Resume",
+                paused_progress: "messages sent out of",
                 complete_title: "Campaign Complete!",
                 stat_sent: "Sent",
                 stat_failed: "Failed",
                 stat_skipped: "Skipped",
-                new_campaign: "📱 New Campaign",
+                close_app: "✕ Close",
                 update_available: "Version",
                 available: "available!",
                 update_now: "Update Now",
@@ -821,6 +933,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             document.getElementById('lang-fr').classList.toggle('active', lang === 'fr');
             document.getElementById('lang-en').classList.toggle('active', lang === 'en');
             
+            // Update title based on language
+            document.getElementById('app-title').textContent = lang === 'fr' ? 'Campagne SMS' : 'SMS Campaign';
+            
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
                 if (translations[lang][key]) {
@@ -841,13 +956,96 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         let messageTemplate = '';
         let sending = false;
         let stopped = false;
+        let paused = false;
+        let currentSendIndex = 0;
         
         // ===== SCREENS =====
         const allScreens = ['screen-loading', 'screen-activation', 'screen-step1', 'screen-step2', 'screen-step3', 'screen-sending', 'screen-complete'];
         
+        // Base widths for each screen (height is calculated from content)
+        const screenWidths = {
+            'screen-loading': 500,
+            'screen-activation': 520,
+            'screen-step1': 550,
+            'screen-step2': 600,
+            'screen-step3': 1000,
+            'screen-sending': 600,
+            'screen-complete': 500
+        };
+        
+        // Calculate window height based on actual content
+        function calculateContentHeight(screenId) {
+            const screen = document.getElementById(screenId);
+            if (!screen) return 500;
+            
+            // Temporarily show to measure (without animation)
+            const wasHidden = screen.classList.contains('hidden');
+            if (wasHidden) {
+                screen.style.visibility = 'hidden';
+                screen.style.position = 'absolute';
+                screen.classList.remove('hidden');
+            }
+            
+            // Get the container and header heights
+            const container = document.querySelector('.container');
+            const header = document.querySelector('.header');
+            const updateBanner = document.getElementById('update-banner');
+            const langToggle = document.querySelector('.lang-toggle');
+            
+            // Calculate total height: screen card + header + padding + chrome
+            const screenHeight = screen.offsetHeight;
+            const headerHeight = header ? header.offsetHeight : 0;
+            const bannerHeight = (updateBanner && !updateBanner.classList.contains('hidden')) ? updateBanner.offsetHeight + 16 : 0;
+            const containerPadding = 32; // 16px top + 16px bottom
+            const headerMargin = 30; // margin-bottom on header
+            const windowChrome = 40; // Title bar + some buffer
+            
+            // Restore hidden state
+            if (wasHidden) {
+                screen.classList.add('hidden');
+                screen.style.visibility = '';
+                screen.style.position = '';
+            }
+            
+            const totalHeight = screenHeight + headerHeight + headerMargin + bannerHeight + containerPadding + windowChrome;
+            
+            // Add minimum heights and screen-specific max caps
+            const minHeight = 400;
+            const maxHeight = screenId === 'screen-step3' ? 1100 : 900;
+            
+            return Math.max(minHeight, Math.min(maxHeight, totalHeight));
+        }
+        
+        // Resize window based on content
+        function resizeToContent(screenId) {
+            if (!window.pywebview || !window.pywebview.api) return;
+            
+            const width = screenWidths[screenId] || 550;
+            const height = calculateContentHeight(screenId);
+            
+            try {
+                window.pywebview.api.resize(width, height);
+            } catch (e) {
+                console.log('Resize error:', e);
+            }
+        }
+        
         function showScreen(id) {
             allScreens.forEach(s => document.getElementById(s).classList.add('hidden'));
             document.getElementById(id).classList.remove('hidden');
+            
+            // Use requestAnimationFrame to ensure DOM is updated before measuring
+            requestAnimationFrame(() => {
+                resizeToContent(id);
+            });
+        }
+        
+        // Resize current screen (call after content changes)
+        function resizeCurrentScreen() {
+            const currentScreen = allScreens.find(s => !document.getElementById(s).classList.contains('hidden'));
+            if (currentScreen) {
+                resizeToContent(currentScreen);
+            }
         }
         
         // ===== API =====
@@ -928,6 +1126,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const fileDropZone = document.getElementById('file-drop-zone');
         
         fileInput.addEventListener('change', e => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+        fileDropZone.addEventListener('click', e => { if (e.target !== fileInput) fileInput.click(); });
         fileDropZone.addEventListener('dragover', e => { e.preventDefault(); fileDropZone.style.borderColor = 'var(--accent)'; });
         fileDropZone.addEventListener('dragleave', () => { fileDropZone.style.borderColor = ''; });
         fileDropZone.addEventListener('drop', e => { e.preventDefault(); fileDropZone.style.borderColor = ''; if (e.dataTransfer.files[0]) handleFile(e.dataTransfer.files[0]); });
@@ -945,15 +1144,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     document.getElementById('file-name').classList.remove('hidden');
                     
                     document.getElementById('contact-count').textContent = contacts.length;
-                    const tbody = document.getElementById('contacts-body');
-                    tbody.innerHTML = '';
-                    
-                    contacts.forEach((c, i) => {
-                        const phones = c.phones.length ? c.phones.map(p => `<span class="phone-tag">${p}</span>`).join('') : `<span style="color:var(--text-secondary)">${translations[currentLang].no_phone}</span>`;
-                        tbody.innerHTML += `<tr><td>${i+1}</td><td>${c.firstname || '—'}</td><td>${c.lastname || '—'}</td><td>${phones}</td></tr>`;
-                    });
-                    
                     document.getElementById('csv-preview').classList.remove('hidden');
+                    
+                    // Resize window to fit the content that appeared
+                    resizeCurrentScreen();
                 } else {
                     alert('Error: ' + result.error);
                 }
@@ -992,16 +1186,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             
             if (messageTemplate.trim()) {
                 btn.disabled = false;
-                const preview = messageTemplate
-                    .replace(/\\{\\{prenom\\}\\}/gi, contacts[0]?.firstname || contacts[0]?.name || 'Client')
-                    .replace(/\\{\\{nom\\}\\}/gi, contacts[0]?.lastname || '')
-                    .replace(/\\{\\{name\\}\\}/gi, contacts[0]?.name || contacts[0]?.firstname || 'Client');
-                document.getElementById('message-preview').textContent = preview;
-                document.getElementById('message-preview-box').classList.remove('hidden');
             } else {
                 btn.disabled = true;
-                document.getElementById('message-preview-box').classList.add('hidden');
             }
+            
+            // Always show preview, with highlighted variables
+            const firstContact = contacts[0];
+            const firstName = firstContact?.firstname || firstContact?.name || 'Client';
+            const lastName = firstContact?.lastname || '';
+            
+            let preview = messageTemplate || '';
+            preview = preview
+                .replace(/\\{\\{prenom\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstName}</span>`)
+                .replace(/\\{\\{nom\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${lastName}</span>`)
+                .replace(/\\{\\{name\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstName}</span>`);
+            
+            document.getElementById('message-preview').innerHTML = preview;
+            
+            // Dynamically resize window based on content
+            resizeCurrentScreen();
         });
         
         document.getElementById('btn-back-to-step1').addEventListener('click', () => showScreen('screen-step1'));
@@ -1050,46 +1253,56 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             document.getElementById('skipped-count').textContent = skippedContacts.length;
             document.getElementById('separator-type').textContent = translations[currentLang][`separator_${separatorType}`] || separatorType;
             
-            // Valid contacts table
+            // Valid contacts table (simplified for side-by-side)
             const validBody = document.getElementById('valid-contacts-body');
             validBody.innerHTML = '';
             if (validatedContacts.length === 0) {
-                validBody.innerHTML = `<tr><td colspan="5" style="color:var(--text-secondary)">${translations[currentLang].no_valid_contacts}</td></tr>`;
+                validBody.innerHTML = `<tr><td colspan="4" style="color:var(--text-secondary)">${translations[currentLang].no_valid_contacts}</td></tr>`;
             } else {
                 validatedContacts.forEach(c => {
                     validBody.innerHTML += `<tr>
                         <td>${c.lineNumber}</td>
                         <td>${c.firstname || '—'}</td>
                         <td>${c.lastname || '—'}</td>
-                        <td class="phone-tag">${c.phone}</td>
-                        <td class="phone-source">${c.phoneSource}</td>
+                        <td style="font-size:11px">${c.phone}</td>
                     </tr>`;
                 });
             }
             
-            // Skipped contacts table
+            // Skipped contacts table (simplified for side-by-side)
             const skippedBody = document.getElementById('skipped-contacts-body');
             skippedBody.innerHTML = '';
             if (skippedContacts.length === 0) {
-                document.getElementById('skipped-section').style.display = 'none';
+                document.getElementById('skipped-section').style.opacity = '0.4';
+                skippedBody.innerHTML = `<tr><td colspan="3" style="color:var(--text-secondary)">—</td></tr>`;
             } else {
-                document.getElementById('skipped-section').style.display = 'block';
+                document.getElementById('skipped-section').style.opacity = '1';
                 skippedContacts.forEach(s => {
+                    // Show phone if firstname is missing, show firstname if phone is missing
+                    let infoDisplay = '';
+                    if (!s.rawFirstName && s.rawPhone) {
+                        infoDisplay = `${s.rawPhone}`;
+                    } else if (s.rawFirstName && !s.rawPhone) {
+                        infoDisplay = `${s.rawFirstName}`;
+                    } else if (s.rawFirstName && s.rawPhone) {
+                        infoDisplay = `${s.rawFirstName}`;
+                    } else {
+                        infoDisplay = '—';
+                    }
                     skippedBody.innerHTML += `<tr>
                         <td>${s.lineNumber}</td>
-                        <td class="reason">${s.reason}</td>
-                        <td class="raw-data">${s.rawFirstName || '—'}</td>
-                        <td class="raw-data">${(s.rawPhone || '—').substring(0, 30)}</td>
+                        <td class="reason" style="font-size:11px">${s.reason}</td>
+                        <td style="font-size:11px">${infoDisplay}</td>
                     </tr>`;
                 });
             }
             
-            // Message preview (like mobile app)
+            // Message preview (like mobile app) with highlighted variables
             const firstValid = validatedContacts[0];
             const preview = firstValid ? messageTemplate
-                .replace(/\\{\\{prenom\\}\\}/gi, `<span style="background:#0a84ff33;color:#0a84ff;padding:2px 6px;border-radius:4px">${firstValid.firstname || 'Client'}</span>`)
-                .replace(/\\{\\{nom\\}\\}/gi, `<span style="background:#0a84ff33;color:#0a84ff;padding:2px 6px;border-radius:4px">${firstValid.lastname || ''}</span>`)
-                .replace(/\\{\\{name\\}\\}/gi, `<span style="background:#0a84ff33;color:#0a84ff;padding:2px 6px;border-radius:4px">${firstValid.firstname || 'Client'}</span>`)
+                .replace(/\\{\\{prenom\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstValid.firstname || 'Client'}</span>`)
+                .replace(/\\{\\{nom\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstValid.lastname || ''}</span>`)
+                .replace(/\\{\\{name\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstValid.firstname || 'Client'}</span>`)
                 : messageTemplate;
             document.getElementById('dashboard-preview').innerHTML = preview;
             
@@ -1158,20 +1371,54 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         // ===== STEP 3: SEND =====
         document.getElementById('btn-back-to-step2').addEventListener('click', () => showScreen('screen-step2'));
         
-        document.getElementById('btn-send').addEventListener('click', async () => {
+        // Show confirmation modal
+        document.getElementById('btn-send').addEventListener('click', () => {
             if (validatedContacts.length === 0) return;
-            
+            document.getElementById('confirm-count').textContent = validatedContacts.length;
+            document.getElementById('confirm-modal').classList.remove('hidden');
+        });
+        
+        // Cancel send
+        document.getElementById('btn-cancel-send').addEventListener('click', () => {
+            document.getElementById('confirm-modal').classList.add('hidden');
+        });
+        
+        // Close modal on overlay click
+        document.getElementById('confirm-modal').addEventListener('click', (e) => {
+            if (e.target.id === 'confirm-modal') {
+                document.getElementById('confirm-modal').classList.add('hidden');
+            }
+        });
+        
+        // Sending state
+        let sent = 0, failed = 0;
+        const maxLogEntries = 15;
+        let logEntries = [];
+        
+        // Confirm and send
+        document.getElementById('btn-confirm-send').addEventListener('click', async () => {
+            document.getElementById('confirm-modal').classList.add('hidden');
+            startSending(0);
+        });
+        
+        async function startSending(startIndex) {
             showScreen('screen-sending');
             sending = true;
             stopped = false;
+            paused = false;
             
             const log = document.getElementById('send-log');
-            log.innerHTML = '';
+            if (startIndex === 0) {
+                log.innerHTML = '';
+                logEntries = [];
+                sent = 0;
+                failed = 0;
+            }
             
-            let sent = 0, failed = 0;
             const total = validatedContacts.length;
             
-            for (let i = 0; i < validatedContacts.length && !stopped; i++) {
+            for (let i = startIndex; i < validatedContacts.length && !stopped && !paused; i++) {
+                currentSendIndex = i;
                 const contact = validatedContacts[i];
                 const phone = contact.phone;
                 const message = messageTemplate
@@ -1182,42 +1429,68 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const result = await api('send_sms', { phone, message });
                 const time = new Date().toLocaleTimeString();
                 
+                let logEntry;
                 if (result.success) {
                     sent++;
-                    log.innerHTML += `<div class="log-entry"><span class="log-time">${time}</span><span>✅</span><span class="log-message">${contact.firstname || 'Contact'} → ${phone}</span></div>`;
+                    logEntry = `<div class="log-entry"><span class="log-time">${time}</span><span style="color:#30d158">Sent</span><span class="log-message">${contact.firstname || 'Contact'} → ${phone}</span></div>`;
                 } else {
                     failed++;
-                    log.innerHTML += `<div class="log-entry"><span class="log-time">${time}</span><span>❌</span><span class="log-message">${contact.firstname || 'Contact'}: ${result.error || 'Failed'}</span></div>`;
+                    logEntry = `<div class="log-entry"><span class="log-time">${time}</span><span style="color:#ff453a">Error</span><span class="log-message">${contact.firstname || 'Contact'}: ${result.error || 'Failed'}</span></div>`;
                 }
                 
+                // Keep only last 15 entries
+                logEntries.push(logEntry);
+                if (logEntries.length > maxLogEntries) {
+                    logEntries.shift();
+                }
+                log.innerHTML = logEntries.join('');
                 log.scrollTop = log.scrollHeight;
                 
                 const progress = ((i + 1) / total * 100).toFixed(0);
                 document.getElementById('progress-fill').style.width = progress + '%';
                 document.getElementById('progress-current').textContent = `${i + 1} / ${total}`;
                 document.getElementById('progress-percent').textContent = progress + '%';
+                
+                currentSendIndex = i + 1;
             }
             
+            // Only show complete if not paused
+            if (!paused) {
+                document.getElementById('final-success').textContent = sent;
+                document.getElementById('final-failed').textContent = failed;
+                document.getElementById('final-skipped').textContent = skippedContacts.length;
+                showScreen('screen-complete');
+            }
+        }
+        
+        // Pause button
+        document.getElementById('btn-pause').addEventListener('click', () => {
+            paused = true;
+            const total = validatedContacts.length;
+            document.getElementById('pause-progress').textContent = `${currentSendIndex} ${translations[currentLang].paused_progress} ${total}`;
+            document.getElementById('pause-modal').classList.remove('hidden');
+        });
+        
+        // Resume button
+        document.getElementById('btn-resume').addEventListener('click', () => {
+            document.getElementById('pause-modal').classList.add('hidden');
+            startSending(currentSendIndex);
+        });
+        
+        // Cancel all button
+        document.getElementById('btn-cancel-sending').addEventListener('click', () => {
+            document.getElementById('pause-modal').classList.add('hidden');
+            stopped = true;
+            const remaining = validatedContacts.length - sent - failed;
             document.getElementById('final-success').textContent = sent;
-            document.getElementById('final-failed').textContent = failed;
+            document.getElementById('final-failed').textContent = failed + remaining;
             document.getElementById('final-skipped').textContent = skippedContacts.length;
             showScreen('screen-complete');
         });
         
-        document.getElementById('btn-stop').addEventListener('click', () => { stopped = true; });
-        
-        document.getElementById('btn-new-campaign').addEventListener('click', () => {
-            contacts = [];
-            validatedContacts = [];
-            skippedContacts = [];
-            messageTemplate = '';
-            messageInput.value = '';
-            document.getElementById('file-name').classList.add('hidden');
-            fileDropZone.classList.remove('has-file');
-            document.getElementById('csv-preview').classList.add('hidden');
-            document.getElementById('message-preview-box').classList.add('hidden');
-            document.getElementById('btn-to-step3').disabled = true;
-            showScreen('screen-step1');
+        // Close app button
+        document.getElementById('btn-close-app').addEventListener('click', () => {
+            window.close();
         });
         
         // ===== START =====
@@ -1676,15 +1949,20 @@ def parse_csv(content, filename=""):
 # SMS SENDING
 # ============================================================================
 
-def send_imessage(phone, message):
-    """Send an iMessage using AppleScript."""
+def send_sms(phone, message):
+    """Send an SMS using AppleScript via Messages app.
+    
+    Uses SMS service type to ensure delivery to all phones (iPhone and Android).
+    This requires an iPhone connected via Continuity/Text Message Forwarding.
+    """
     # Escape for AppleScript
     message_escaped = message.replace('\\', '\\\\').replace('"', '\\"')
     phone_escaped = phone.replace('\\', '\\\\').replace('"', '\\"')
     
+    # Use SMS service (not iMessage) to ensure delivery to all phones
     script = f'''
     tell application "Messages"
-        set targetService to 1st account whose service type = iMessage
+        set targetService to 1st account whose service type = SMS
         set targetBuddy to participant "{phone_escaped}" of targetService
         send "{message_escaped}" to targetBuddy
     end tell
@@ -1748,7 +2026,7 @@ class RequestHandler(BaseHTTPRequestHandler):
                 elif action == 'send_sms':
                     phone = data.get('phone', '')
                     message = data.get('message', '')
-                    result = send_imessage(phone, message)
+                    result = send_sms(phone, message)
                     if result["success"]:
                         # Add delay between messages
                         time.sleep(CONFIG["message_delay"])
@@ -1800,9 +2078,75 @@ def signal_launcher_ready():
     except Exception as e:
         print(f"Failed to signal: {e}")
 
+# Global reference to window for API
+_window = None
+
+class Api:
+    """API class exposed to JavaScript via pywebview."""
+    
+    def resize_and_center(self, width, height):
+        """Resize and keep the window centered on itself (same center point)."""
+        global _window
+        if not _window:
+            print("[DEBUG] resize_and_center: _window is None")
+            return
+        
+        new_width = int(width)
+        new_height = int(height)
+        
+        try:
+            import AppKit
+            import objc
+            
+            # Get the NSWindow from pywebview
+            ns_window = None
+            for window in AppKit.NSApplication.sharedApplication().windows():
+                title = window.title()
+                if title == 'Campagne SMS' or title == 'SMS Campaign':
+                    ns_window = window
+                    break
+            
+            if ns_window:
+                # Get current window frame BEFORE any changes
+                current_frame = ns_window.frame()
+                old_width = current_frame.size.width
+                old_height = current_frame.size.height
+                old_x = current_frame.origin.x
+                old_y = current_frame.origin.y
+                
+                # Calculate center point of old window
+                center_x = old_x + old_width / 2
+                center_y = old_y + old_height / 2
+                
+                # Calculate new position to keep same center point
+                new_x = center_x - new_width / 2
+                new_y = center_y - new_height / 2
+                
+                # Define a block to run on main thread
+                def set_frame():
+                    new_frame = AppKit.NSMakeRect(new_x, new_y, new_width, new_height)
+                    ns_window.setFrame_display_animate_(new_frame, True, False)
+                
+                # Schedule on main thread
+                AppKit.NSOperationQueue.mainQueue().addOperationWithBlock_(set_frame)
+                
+            else:
+                _window.resize(new_width, new_height)
+            
+        except Exception as e:
+            _window.resize(new_width, new_height)
+    
+    def resize(self, width, height):
+        """Resize the window (calls resize_and_center)."""
+        self.resize_and_center(width, height)
+    
+    def center(self):
+        """Center the window on screen (no-op since resize_and_center does it)."""
+        pass  # Already centered by resize_and_center
+
 def main():
     """Main entry point using native window."""
-    import webview
+    global _window
     
     port = find_free_port()
     server = HTTPServer(('127.0.0.1', port), RequestHandler)
@@ -1814,21 +2158,23 @@ def main():
     url = f'http://127.0.0.1:{port}'
     print(f"Starting SMS Campaign v{VERSION}")
     
-    # Create native window
-    window = webview.create_window(
-        'SMS Campaign',
+    api = Api()
+    
+    # Create native window (non-resizable, starts at loading size)
+    _window = webview.create_window(
+        'Campagne SMS',
         url,
-        width=650,
-        height=800,
-        resizable=True,
-        min_size=(500, 600)
+        width=500,
+        height=400,
+        resizable=False,
+        js_api=api
     )
     
     # Signal launcher when window is ready
     def on_loaded():
         signal_launcher_ready()
     
-    window.events.loaded += on_loaded
+    _window.events.loaded += on_loaded
     
     webview.start()
     

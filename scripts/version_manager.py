@@ -234,8 +234,8 @@ def create_github_release(version):
         print("GitHub CLI (gh) not found. Install with: brew install gh")
         return False
     
-    # Build the app first
-    print("Building SMS Campaign.app...")
+    # Build the main app first
+    print("Building SMS Campaign.app (main app)...")
     build_result = subprocess.run(
         ["pyinstaller", "-y", "--onefile", "--windowed", 
          "--name", "SMS Campaign", 
@@ -249,7 +249,7 @@ def create_github_release(version):
         print(f"Build failed: {build_result.stderr}")
         return False
     
-    # Create ZIP
+    # Create ZIP (for auto-updater)
     print("Creating ZIP archive...")
     zip_path = MAC_APP_DIR / "dist" / "SMS.Campaign.zip"
     app_path = MAC_APP_DIR / "dist" / "SMS Campaign.app"
@@ -265,13 +265,59 @@ def create_github_release(version):
         print("Failed to create ZIP")
         return False
     
+    # Build the launcher
+    print("Building SMS Campaign Launcher.app...")
+    launcher_path = MAC_APP_DIR / "launcher_v2.py"
+    if launcher_path.exists():
+        launcher_build = subprocess.run(
+            ["pyinstaller", "-y", "--onefile", "--windowed", 
+             "--name", "SMS Campaign Launcher", 
+             "launcher_v2.py"],
+            cwd=MAC_APP_DIR,
+            capture_output=True, text=True
+        )
+        
+        if launcher_build.returncode != 0:
+            print(f"Launcher build failed: {launcher_build.stderr}")
+            # Continue anyway, launcher is optional
+        else:
+            # Create DMG installer
+            print("Creating DMG installer...")
+            dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
+            dmg_temp = MAC_APP_DIR / "dist" / "dmg_temp"
+            
+            subprocess.run(["rm", "-rf", str(dmg_temp), str(dmg_path)], cwd=MAC_APP_DIR / "dist")
+            subprocess.run(["mkdir", "-p", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
+            subprocess.run(["cp", "-R", "SMS Campaign Launcher.app", str(dmg_temp / "SMS Campaign.app")], cwd=MAC_APP_DIR / "dist")
+            subprocess.run(["ln", "-s", "/Applications", str(dmg_temp / "Applications")], cwd=MAC_APP_DIR / "dist")
+            
+            dmg_result = subprocess.run(
+                ["hdiutil", "create", "-volname", "SMS Campaign", 
+                 "-srcfolder", str(dmg_temp), "-ov", "-format", "UDZO", str(dmg_path)],
+                cwd=MAC_APP_DIR / "dist",
+                capture_output=True, text=True
+            )
+            
+            subprocess.run(["rm", "-rf", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
+            
+            if dmg_path.exists():
+                print("✅ DMG installer created")
+            else:
+                print(f"DMG creation failed: {dmg_result.stderr}")
+    
     # Create GitHub release
     print(f"Creating GitHub release v{version}...")
+    
+    # Prepare list of files to upload
+    release_files = [str(zip_path)]
+    dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
+    if dmg_path.exists():
+        release_files.append(str(dmg_path))
+    
     release_result = subprocess.run(
-        ["gh", "release", "create", f"v{version}",
-         str(zip_path),
+        ["gh", "release", "create", f"v{version}"] + release_files + [
          "--title", f"SMS Campaign v{version}",
-         "--notes", f"SMS Campaign version {version}\n\nDownload SMS.Campaign.zip and extract to use."],
+         "--notes", f"SMS Campaign version {version}\n\n**For new installs:** Download `SMS.Campaign.Installer.dmg` and drag to Applications.\n\n**For auto-updates:** The app updates automatically."],
         cwd=REPO_ROOT,
         capture_output=True, text=True
     )
@@ -279,19 +325,15 @@ def create_github_release(version):
     if release_result.returncode != 0:
         # Check if release already exists
         if "already exists" in release_result.stderr:
-            print(f"Release v{version} already exists, uploading asset...")
-            # Delete existing asset and upload new one
-            subprocess.run(
-                ["gh", "release", "delete-asset", f"v{version}", "SMS.Campaign.zip", "-y"],
-                cwd=REPO_ROOT, capture_output=True
-            )
-            upload_result = subprocess.run(
-                ["gh", "release", "upload", f"v{version}", str(zip_path), "--clobber"],
-                cwd=REPO_ROOT, capture_output=True, text=True
-            )
-            if upload_result.returncode != 0:
-                print(f"Upload failed: {upload_result.stderr}")
-                return False
+            print(f"Release v{version} already exists, uploading assets...")
+            # Upload all files with --clobber to overwrite existing
+            for file_path in release_files:
+                upload_result = subprocess.run(
+                    ["gh", "release", "upload", f"v{version}", file_path, "--clobber"],
+                    cwd=REPO_ROOT, capture_output=True, text=True
+                )
+                if upload_result.returncode != 0:
+                    print(f"Upload failed for {file_path}: {upload_result.stderr}")
         else:
             print(f"Release creation failed: {release_result.stderr}")
             return False
