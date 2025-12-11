@@ -1,25 +1,28 @@
 #!/usr/bin/env python3
 """
-Create a styled DMG installer for SMS Campaign.
-Features a dark background with arrow pointing from app to Applications.
+Create a styled DMG installer for SMS Campaign using create-dmg.
+Features a dark background with proper icon positioning.
 """
 
 import subprocess
 import os
 import tempfile
-import time
 from pathlib import Path
 
 MAC_APP_DIR = Path(__file__).parent
 DIST_DIR = MAC_APP_DIR / "dist"
 
-# DMG background as base64-encoded PNG (dark gradient with arrow)
-# We'll create it programmatically using HTML + screenshot or simple approach
 
-def create_background_image(output_path, width=540, height=380):
+def create_background_image(output_path, width=600, height=400):
     """Create a background image for the DMG using ImageMagick."""
     
-    png_path = str(output_path.with_suffix('.png'))
+    png_path = str(output_path)
+    
+    # Icons are at Y=185 (from top of content area, not window)
+    # Window bounds: 200,120 to 800,520 = 600x400
+    # But there's ~50px for title bar, so content is ~350px
+    # Arrow should be at roughly Y=200 (slightly below center to align with icon centers)
+    arrow_y = 210
     
     # Create gradient background with arrow using ImageMagick
     result = subprocess.run([
@@ -28,17 +31,17 @@ def create_background_image(output_path, width=540, height=380):
         # Dark gradient background
         "gradient:#1a1a2e-#0f3460",
         # Title at top
-        "-font", "Helvetica-Bold", "-pointsize", "24", "-fill", "white",
-        "-gravity", "North", "-annotate", "+0+35", "Installer SMS Campaign",
+        "-font", "Helvetica-Bold", "-pointsize", "28", "-fill", "white",
+        "-gravity", "North", "-annotate", "+0+40", "SMS Campaign",
         # Instructions at bottom
-        "-font", "Helvetica", "-pointsize", "14", "-fill", "#888888",
-        "-gravity", "South", "-annotate", "+0+30", "Glissez vers Applications",
-        # Arrow line (thicker)
-        "-stroke", "#667eea", "-strokewidth", "5",
-        "-draw", f"line {width//2 - 70},{height//2 + 20} {width//2 + 50},{height//2 + 20}",
+        "-font", "Helvetica", "-pointsize", "16", "-fill", "#888888",
+        "-gravity", "South", "-annotate", "+0+35", "Glissez l'application vers Applications",
+        # Arrow line (centered, at icon height)
+        "-stroke", "#667eea", "-strokewidth", "6",
+        "-draw", f"line {width//2 - 80},{arrow_y} {width//2 + 60},{arrow_y}",
         # Arrow head (filled triangle)
         "-stroke", "none", "-fill", "#667eea",
-        "-draw", f"polygon {width//2 + 50},{height//2 + 5} {width//2 + 75},{height//2 + 20} {width//2 + 50},{height//2 + 35}",
+        "-draw", f"polygon {width//2 + 60},{arrow_y - 15} {width//2 + 90},{arrow_y} {width//2 + 60},{arrow_y + 15}",
         png_path
     ], capture_output=True, text=True)
     
@@ -47,20 +50,155 @@ def create_background_image(output_path, width=540, height=380):
         return Path(png_path)
     else:
         print(f"Background creation failed: {result.stderr}")
+        # Create a simple fallback background
+        fallback = subprocess.run([
+            "convert",
+            "-size", f"{width}x{height}",
+            "xc:#1a1a2e",
+            "-font", "Helvetica-Bold", "-pointsize", "24", "-fill", "white",
+            "-gravity", "Center", "-annotate", "+0-60", "SMS Campaign",
+            "-font", "Helvetica", "-pointsize", "14", "-fill", "#888888",
+            "-gravity", "South", "-annotate", "+0+30", "Drag to Applications →",
+            png_path
+        ], capture_output=True, text=True)
+        
+        if fallback.returncode == 0:
+            print("✅ Fallback background created")
+            return Path(png_path)
         return None
 
 
 def create_styled_dmg(app_path, output_dmg, volume_name="SMS Campaign"):
-    """Create a styled DMG with custom background and icon positions."""
+    """Create a styled DMG using create-dmg tool."""
     
     print("Creating styled DMG installer...")
     
-    # Paths
+    # Use a unique volume name to avoid conflicts
+    import time as time_module
+    unique_vol = f"SMSCampaign{int(time_module.time())}"
+    
+    # Create temporary directory for background and staging
+    temp_dir = Path(tempfile.mkdtemp())
+    bg_path = temp_dir / "background.png"
+    
+    # Copy app with proper name - use quotes in AppleScript
+    staged_app = temp_dir / "SMS Campaign.app"
+    subprocess.run(["cp", "-R", str(app_path), str(staged_app)], check=True)
+    
+    # Create background image
+    create_background_image(bg_path, width=600, height=400)
+    
+    # Remove existing DMG
+    if output_dmg.exists():
+        output_dmg.unlink()
+    
+    # Create a temporary folder with the content
+    dmg_content = temp_dir / "dmg_content"
+    dmg_content.mkdir()
+    subprocess.run(["cp", "-R", str(staged_app), str(dmg_content / "SMS Campaign.app")], check=True)
+    subprocess.run(["ln", "-s", "/Applications", str(dmg_content / "Applications")], check=True)
+    
+    # Copy background
+    bg_dir = dmg_content / ".background"
+    bg_dir.mkdir()
+    if bg_path.exists():
+        subprocess.run(["cp", str(bg_path), str(bg_dir / "background.png")], check=True)
+    
+    # Create writable DMG with unique name
+    temp_dmg = temp_dir / "temp.dmg"
+    subprocess.run([
+        "hdiutil", "create",
+        "-volname", unique_vol,
+        "-srcfolder", str(dmg_content),
+        "-format", "UDRW",
+        "-fs", "HFS+",
+        str(temp_dmg)
+    ], check=True, capture_output=True)
+    
+    # Mount the DMG
+    mount_result = subprocess.run([
+        "hdiutil", "attach", str(temp_dmg), 
+        "-readwrite", "-noverify", "-noautoopen"
+    ], capture_output=True, text=True, check=True)
+    
+    # Find mount point from output
+    mount_point = f"/Volumes/{unique_vol}"
+    for line in mount_result.stdout.split('\n'):
+        if '/Volumes/' in line:
+            parts = line.split('\t')
+            if len(parts) >= 3:
+                mount_point = parts[-1].strip()
+                break
+    
+    print(f"Mounted at: {mount_point}")
+    time_module.sleep(2)
+    
+    # Apply styling via AppleScript using mount point path
+    applescript = f'''
+    tell application "Finder"
+        set dmgVolume to POSIX file "{mount_point}" as alias
+        tell folder dmgVolume
+            open
+            set current view of container window to icon view
+            set toolbar visible of container window to false
+            set statusbar visible of container window to false
+            set bounds of container window to {{200, 120, 800, 520}}
+            
+            set theViewOptions to the icon view options of container window
+            set arrangement of theViewOptions to not arranged
+            set icon size of theViewOptions to 80
+            set background picture of theViewOptions to file ".background:background.png"
+            
+            set position of item "SMS Campaign.app" of container window to {{150, 185}}
+            set position of item "Applications" of container window to {{450, 185}}
+            
+            update without registering applications
+            delay 2
+            close
+        end tell
+    end tell
+    '''
+    
+    result = subprocess.run(["osascript", "-e", applescript], capture_output=True, text=True)
+    if result.returncode != 0:
+        print(f"AppleScript warning: {result.stderr}")
+    
+    # Wait for Finder to write .DS_Store
+    time_module.sleep(3)
+    subprocess.run(["sync"])
+    
+    # Rename volume to proper name before converting
+    subprocess.run([
+        "diskutil", "rename", mount_point, volume_name
+    ], capture_output=True)
+    time_module.sleep(1)
+    
+    # Unmount (use new mount point after rename)
+    new_mount_point = f"/Volumes/{volume_name}"
+    subprocess.run(["hdiutil", "detach", new_mount_point, "-quiet", "-force"], capture_output=True)
+    time_module.sleep(1)
+    
+    # Convert to compressed read-only DMG with proper volume name
+    subprocess.run([
+        "hdiutil", "convert", str(temp_dmg),
+        "-format", "UDZO",
+        "-imagekey", "zlib-level=9",
+        "-o", str(output_dmg)
+    ], check=True, capture_output=True)
+    
+    # Cleanup
+    subprocess.run(["rm", "-rf", str(temp_dir)])
+    
+    print(f"✅ Created styled DMG: {output_dmg}")
+    return True
+
+
+def create_basic_dmg(app_path, output_dmg, volume_name="SMS Campaign"):
+    """Create a basic DMG without styling (fallback)."""
+    
     temp_dir = Path(tempfile.mkdtemp())
     dmg_temp = temp_dir / "dmg_contents"
     dmg_temp.mkdir()
-    background_dir = dmg_temp / ".background"
-    background_dir.mkdir()
     
     # Copy app
     app_dest = dmg_temp / "SMS Campaign.app"
@@ -70,111 +208,22 @@ def create_styled_dmg(app_path, output_dmg, volume_name="SMS Campaign"):
     apps_link = dmg_temp / "Applications"
     subprocess.run(["ln", "-s", "/Applications", str(apps_link)], check=True)
     
-    # Create background image using ImageMagick
-    bg_png = create_background_image(background_dir / "background")
-    
-    # Create temporary writable DMG
-    temp_dmg = temp_dir / "temp.dmg"
-    
+    # Create DMG
     subprocess.run([
         "hdiutil", "create",
         "-volname", volume_name,
         "-srcfolder", str(dmg_temp),
-        "-format", "UDRW",
-        "-fs", "HFS+",
-        str(temp_dmg)
-    ], check=True)
-    
-    # Mount the DMG
-    mount_result = subprocess.run([
-        "hdiutil", "attach", str(temp_dmg), "-readwrite", "-noverify", "-noautoopen"
-    ], capture_output=True, text=True, check=True)
-    
-    # Find mount point
-    mount_point = None
-    for line in mount_result.stdout.split('\n'):
-        if volume_name in line:
-            parts = line.split('\t')
-            if len(parts) >= 3:
-                mount_point = parts[-1].strip()
-                break
-    
-    if not mount_point:
-        mount_point = f"/Volumes/{volume_name}"
-    
-    print(f"DMG mounted at: {mount_point}")
-    
-    # Wait a moment for mount
-    time.sleep(1)
-    
-    # Use AppleScript to customize the DMG window
-    applescript = f'''
-    tell application "Finder"
-        tell disk "{volume_name}"
-            open
-            set current view of container window to icon view
-            set toolbar visible of container window to false
-            set statusbar visible of container window to false
-            set bounds of container window to {{100, 100, 640, 480}}
-            set viewOptions to the icon view options of container window
-            set arrangement of viewOptions to not arranged
-            set icon size of viewOptions to 80
-            
-            -- Position the icons
-            set position of item "SMS Campaign.app" of container window to {{130, 200}}
-            set position of item "Applications" of container window to {{410, 200}}
-            
-            close
-            open
-            update without registering applications
-            delay 1
-        end tell
-    end tell
-    '''
-    
-    subprocess.run(["osascript", "-e", applescript], capture_output=True)
-    
-    # Set custom background if we have one
-    if bg_png and bg_png.exists():
-        bg_dest = Path(mount_point) / ".background"
-        bg_dest.mkdir(exist_ok=True)
-        subprocess.run(["cp", str(bg_png), str(bg_dest / "background.png")])
-        
-        # Set background via AppleScript
-        bg_script = f'''
-        tell application "Finder"
-            tell disk "{volume_name}"
-                open
-                set current view of container window to icon view
-                set viewOptions to the icon view options of container window
-                set background picture of viewOptions to file ".background:background.png"
-                close
-                open
-                update without registering applications
-            end tell
-        end tell
-        '''
-        subprocess.run(["osascript", "-e", bg_script], capture_output=True)
-    
-    time.sleep(1)
-    
-    # Unmount
-    subprocess.run(["hdiutil", "detach", mount_point, "-quiet"], capture_output=True)
-    
-    # Convert to compressed read-only DMG
-    subprocess.run(["rm", "-f", str(output_dmg)])
-    subprocess.run([
-        "hdiutil", "convert", str(temp_dmg),
-        "-format", "UDZO",
-        "-imagekey", "zlib-level=9",
-        "-o", str(output_dmg)
+        "-ov", "-format", "UDZO",
+        str(output_dmg)
     ], check=True)
     
     # Cleanup
     subprocess.run(["rm", "-rf", str(temp_dir)])
     
-    print(f"✅ Created styled DMG: {output_dmg}")
-    return True
+    if output_dmg.exists():
+        print(f"✅ Created basic DMG: {output_dmg}")
+        return True
+    return False
 
 
 def main():
@@ -191,4 +240,5 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    success = main()
+    exit(0 if success else 1)
