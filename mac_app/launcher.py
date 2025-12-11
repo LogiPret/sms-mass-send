@@ -53,7 +53,7 @@ def log_exception(e):
 # CONFIG
 # ============================================================================
 
-LAUNCHER_VERSION = "1.0.0"
+LAUNCHER_VERSION = "1.1.0"
 APP_NAME = "SMS Campaign"
 CONFIG = {
     "update_url": "https://gist.githubusercontent.com/hugootth/3e89759cac04be452c935c90b5733eea/raw/version.json",
@@ -69,14 +69,17 @@ def get_launcher_bundle_path():
     # For development
     return os.path.dirname(os.path.abspath(__file__))
 
+def get_app_support_path():
+    """Get path to Application Support folder for storing the main app.
+    This avoids App Translocation issues when running from Downloads."""
+    home = os.path.expanduser("~")
+    app_support = os.path.join(home, "Library", "Application Support", "SMSCampaign")
+    os.makedirs(app_support, exist_ok=True)
+    return app_support
+
 def get_resources_path():
-    """Get path to Resources folder inside the launcher bundle."""
-    bundle = get_launcher_bundle_path()
-    if bundle and bundle.endswith('.app'):
-        resources = os.path.join(bundle, "Contents", "Resources")
-        os.makedirs(resources, exist_ok=True)
-        return resources
-    return os.path.dirname(os.path.abspath(__file__))
+    """Get path to store app resources (now in Application Support)."""
+    return get_app_support_path()
 
 def get_main_app_path():
     """Get path to the main app stored inside launcher's Resources."""

@@ -30,7 +30,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.3"
+VERSION = "2.4.4"
 BUILD = 1
 
 CONFIG = {
