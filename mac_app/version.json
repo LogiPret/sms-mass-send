@@ -1,8 +1,8 @@
 {
-    "version": "2.4.13",
+    "version": "2.4.14",
     "download_url": "https://github.com/LogiPret/sms-mass-send/releases/latest/download/SMS.Campaign.zip",
     "notes": "Dashboard with contact validation like mobile app",
-    "changelog": "Version 2.4.13",
+    "changelog": "Version 2.4.14",
     "date": "2025-01-13",
     "build": 1,
     "min_os": "10.15",

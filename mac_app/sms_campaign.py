@@ -31,7 +31,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.13"
+VERSION = "2.4.14"
 BUILD = 1
 
 CONFIG = {
@@ -1774,7 +1774,6 @@ def normalize_column_name(name):
     """Normalize column name for matching: lowercase, remove accents, strip whitespace."""
     if not name:
         return ""
-    # Fix encoding issues first
     name = fix_french_accents(name)
     # Remove accents
     name = remove_accents(name)
@@ -1805,7 +1804,6 @@ def match_column(normalized_name, exact_patterns, partial_patterns, negative_pat
     # Check for partial matches (column name contains pattern or pattern contains column name)
     for pattern in partial_patterns:
         pattern_normalized = remove_accents(pattern.lower())
-        # Pattern should be at word boundary (not in the middle of another word)
         # Use word boundaries: start of string, end of string, or underscore
         if re.search(r'(^|_)' + re.escape(pattern_normalized) + r'($|_)', normalized_name):
             return ('partial', pattern)
@@ -2270,6 +2268,25 @@ class Api:
 def main():
     """Main entry point using native window."""
     global _window
+    
+    # Set Dock icon on macOS
+    try:
+        import AppKit
+        import os
+        # Find the icon file (bundled in .app or in dev directory)
+        if getattr(sys, 'frozen', False):
+            # Running as compiled app
+            bundle_dir = sys._MEIPASS
+        else:
+            # Running in development
+            bundle_dir = os.path.dirname(os.path.abspath(__file__))
+        
+        icon_path = os.path.join(bundle_dir, 'icon.icns')
+        if os.path.exists(icon_path):
+            icon = AppKit.NSImage.alloc().initWithContentsOfFile_(icon_path)
+            AppKit.NSApplication.sharedApplication().setApplicationIconImage_(icon)
+    except Exception as e:
+        print(f"Could not set Dock icon: {e}")
     
     port = find_free_port()
     server = HTTPServer(('127.0.0.1', port), RequestHandler)

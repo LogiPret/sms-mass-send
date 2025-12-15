@@ -5,7 +5,7 @@ a = Analysis(
     ['sms_campaign.py'],
     pathex=[],
     binaries=[],
-    datas=[('version.json', '.')],
+    datas=[('version.json', '.'), ('icon.icns', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -39,6 +39,6 @@ exe = EXE(
 app = BUNDLE(
     exe,
     name='SMS Campaign.app',
-    icon='icon.icns',
-    bundle_identifier='com.logipret.sms-campaign',
+    icon=None,
+    bundle_identifier=None,
 )
