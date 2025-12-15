@@ -39,6 +39,6 @@ exe = EXE(
 app = BUNDLE(
     exe,
     name='SMS Campaign.app',
-    icon=None,
-    bundle_identifier=None,
+    icon='icon.icns',
+    bundle_identifier='com.logipret.sms-campaign',
 )

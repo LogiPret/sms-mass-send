@@ -31,7 +31,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.12"
+VERSION = "2.4.13"
 BUILD = 1
 
 CONFIG = {
@@ -60,7 +60,7 @@ CONFIG = {
     "name_columns_partial": ["name", "nom", "client", "customer", "contact"],
     "name_columns_negative": ["first", "last", "prenom", "famille", "family", "_id", "id_", "number", "phone", "file"],  # Don't match client_id, name_id, filename, etc.
     "phone_separators": ["|", ";", ",", "/", " "],
-    "message_delay": 3.0
+    "message_delay": 0.2
 }
 
 # Known French accent replacements (using escape sequences to avoid encoding issues)
@@ -430,13 +430,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .progress-text { display: flex; justify-content: space-between; margin-top: 8px; font-size: 14px; color: var(--text-secondary); }
         
         .log-container {
-            max-height: 360px;
-            overflow-y: auto;
+            max-height: 300px;
+            min-height: 100px;
+            overflow-y: scroll;
+            -webkit-overflow-scrolling: touch;
             background: var(--bg-tertiary);
             border-radius: 12px;
             padding: 12px;
             font-family: 'SF Mono', Monaco, monospace;
             font-size: 12px;
+            scroll-behavior: smooth;
         }
         
         .log-entry { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 8px; }
@@ -1503,7 +1506,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         // Close app button
         document.getElementById('btn-close-app').addEventListener('click', () => {
-            window.close();
+            if (window.pywebview && window.pywebview.api) {
+                window.pywebview.api.close_app();
+            } else {
+                window.close();
+            }
         });
         
         // ===== START =====
@@ -2243,6 +2250,22 @@ class Api:
     def center(self):
         """Center the window on screen (no-op since resize_and_center does it)."""
         pass  # Already centered by resize_and_center
+    
+    def close_app(self):
+        """Close the application and terminate all processes."""
+        global _window
+        import os
+        import signal
+        
+        try:
+            # Destroy the webview window
+            if _window:
+                _window.destroy()
+        except:
+            pass
+        
+        # Force terminate the process and any child processes
+        os.kill(os.getpid(), signal.SIGTERM)
 
 def main():
     """Main entry point using native window."""
