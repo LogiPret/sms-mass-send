@@ -31,7 +31,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.11"
+VERSION = "2.4.12"
 BUILD = 1
 
 CONFIG = {
@@ -42,10 +42,23 @@ CONFIG = {
     "keychain_service": "com.logipret.sms-campaign",
     "keychain_auth_key": "sms_auth_code",
     "keychain_device_key": "sms_device_id",
-    "phone_columns": ["phone", "phones", "telephone", "tel", "mobile", "cell", "numero", "numéro", "phone_number", "phone_numbers"],
-    "name_columns": ["name", "nom", "client", "customer", "contact"],
-    "firstname_columns": ["first_name", "firstname", "first", "prenom", "prénom"],
-    "lastname_columns": ["last_name", "lastname", "last", "nom", "nom_famille", "family_name", "surname"],
+    # Column patterns: exact matches are checked first, then partial matches
+    # Priority order matters - more specific patterns should come first
+    "phone_columns_exact": ["phone", "phones", "telephone", "tel", "mobile", "cell", "numero", "phone_number", "phone_numbers", "cellulaire", "portable"],
+    "phone_columns_partial": ["phone", "telephone", "mobile", "cell", "numero", "cellulaire", "portable"],
+    "phone_columns_negative": [],  # No negative patterns for phone
+    
+    "firstname_columns_exact": ["first_name", "firstname", "first", "prenom", "given_name", "givenname"],
+    "firstname_columns_partial": ["first_name", "firstname", "prenom", "given_name"],
+    "firstname_columns_negative": [],  # No negative patterns
+    
+    "lastname_columns_exact": ["last_name", "lastname", "last", "nom_famille", "family_name", "familyname", "surname"],
+    "lastname_columns_partial": ["last_name", "lastname", "famille", "family", "surname"],
+    "lastname_columns_negative": ["prenom", "first"],  # Don't match if these are present
+    
+    "name_columns_exact": ["name", "nom", "client", "customer", "contact", "fullname", "full_name"],
+    "name_columns_partial": ["name", "nom", "client", "customer", "contact"],
+    "name_columns_negative": ["first", "last", "prenom", "famille", "family", "_id", "id_", "number", "phone", "file"],  # Don't match client_id, name_id, filename, etc.
     "phone_separators": ["|", ";", ",", "/", " "],
     "message_delay": 3.0
 }
@@ -1741,6 +1754,57 @@ def fix_french_accents(text):
         text = text.replace(bad, good)
     return text
 
+def remove_accents(text):
+    """Remove accents from text (é → e, à → a, etc.)."""
+    import unicodedata
+    if not text:
+        return text
+    # Normalize to NFD (decomposed form), then remove combining marks
+    nfkd = unicodedata.normalize('NFKD', text)
+    return ''.join(c for c in nfkd if not unicodedata.combining(c))
+
+def normalize_column_name(name):
+    """Normalize column name for matching: lowercase, remove accents, strip whitespace."""
+    if not name:
+        return ""
+    # Fix encoding issues first
+    name = fix_french_accents(name)
+    # Remove accents
+    name = remove_accents(name)
+    # Lowercase and strip
+    name = name.lower().strip()
+    # Replace common separators with underscore for consistent matching
+    name = re.sub(r'[\s\-]+', '_', name)
+    return name
+
+def match_column(normalized_name, exact_patterns, partial_patterns, negative_patterns):
+    """
+    Match a normalized column name against patterns.
+    Returns: (match_type, matched_pattern) or (None, None)
+    match_type: 'exact' (highest priority), 'partial' (lower priority)
+    """
+    # Check negative patterns first - if any match, reject this column
+    for neg in negative_patterns:
+        neg_normalized = remove_accents(neg.lower())
+        if neg_normalized in normalized_name:
+            return (None, None)
+    
+    # Check for exact matches (highest priority)
+    for pattern in exact_patterns:
+        pattern_normalized = remove_accents(pattern.lower())
+        if normalized_name == pattern_normalized:
+            return ('exact', pattern)
+    
+    # Check for partial matches (column name contains pattern or pattern contains column name)
+    for pattern in partial_patterns:
+        pattern_normalized = remove_accents(pattern.lower())
+        # Pattern should be at word boundary (not in the middle of another word)
+        # Use word boundaries: start of string, end of string, or underscore
+        if re.search(r'(^|_)' + re.escape(pattern_normalized) + r'($|_)', normalized_name):
+            return ('partial', pattern)
+    
+    return (None, None)
+
 def detect_separator(content):
     """Detect the CSV separator."""
     first_lines = content.split('\n')[:5]
@@ -1825,54 +1889,90 @@ def parse_csv(content, filename=""):
     # Parse CSV
     try:
         reader = csv.DictReader(StringIO(content), delimiter=sep)
-        headers = [h.lower().strip() for h in (reader.fieldnames or [])]
+        original_headers = reader.fieldnames or []
         
-        # Find columns
-        phone_col = None
-        name_col = None
-        firstname_col = None
-        lastname_col = None
+        # Normalize all headers for matching
+        normalized_headers = [(h, normalize_column_name(h)) for h in original_headers]
         
-        for h in headers:
-            original_header = reader.fieldnames[headers.index(h)]
-            h_lower = h.lower()
-            
-            # Phone column
-            if not phone_col:
-                for pc in CONFIG["phone_columns"]:
-                    if pc in h_lower:
-                        phone_col = original_header
-                        break
-            
-            # Firstname column (check first, before generic name)
-            if not firstname_col:
-                for fc in CONFIG["firstname_columns"]:
-                    if fc in h_lower or h_lower == fc:
-                        firstname_col = original_header
-                        break
-            
-            # Lastname column
-            if not lastname_col:
-                for lc in CONFIG["lastname_columns"]:
-                    # Be careful: "nom" could match both firstname and lastname
-                    # Only match lastname if it's a dedicated lastname column
-                    if lc in h_lower and h_lower not in ["prenom", "prénom", "firstname", "first_name"]:
-                        # Check if it's specifically a lastname column
-                        if any(x in h_lower for x in ["last", "famille", "family", "surname"]) or (h_lower == "nom" and firstname_col):
-                            lastname_col = original_header
-                            break
-            
-            # Generic name column (fallback)
-            if not name_col:
-                for nc in CONFIG["name_columns"]:
-                    if nc in h_lower:
-                        name_col = original_header
-                        break
+        # Find columns using smart matching
+        # Track match quality: (original_header, match_type, matched_pattern)
+        phone_matches = []
+        firstname_matches = []
+        lastname_matches = []
+        name_matches = []
         
-        # If we found "nom" and no firstname, it's probably first name
-        if not firstname_col and name_col:
-            firstname_col = name_col
+        for original_header, normalized in normalized_headers:
+            # Phone column detection
+            match_type, pattern = match_column(
+                normalized,
+                CONFIG["phone_columns_exact"],
+                CONFIG["phone_columns_partial"],
+                CONFIG["phone_columns_negative"]
+            )
+            if match_type:
+                phone_matches.append((original_header, match_type, pattern))
+            
+            # Firstname column detection
+            match_type, pattern = match_column(
+                normalized,
+                CONFIG["firstname_columns_exact"],
+                CONFIG["firstname_columns_partial"],
+                CONFIG["firstname_columns_negative"]
+            )
+            if match_type:
+                firstname_matches.append((original_header, match_type, pattern))
+            
+            # Lastname column detection
+            match_type, pattern = match_column(
+                normalized,
+                CONFIG["lastname_columns_exact"],
+                CONFIG["lastname_columns_partial"],
+                CONFIG["lastname_columns_negative"]
+            )
+            if match_type:
+                lastname_matches.append((original_header, match_type, pattern))
+            
+            # Generic name column detection (only if not already firstname/lastname)
+            match_type, pattern = match_column(
+                normalized,
+                CONFIG["name_columns_exact"],
+                CONFIG["name_columns_partial"],
+                CONFIG["name_columns_negative"]
+            )
+            if match_type:
+                name_matches.append((original_header, match_type, pattern))
+        
+        # Select best matches (prefer exact over partial)
+        def select_best_match(matches):
+            if not matches:
+                return None
+            # Sort by match type (exact first), then by position in original headers
+            exact = [m for m in matches if m[1] == 'exact']
+            if exact:
+                return exact[0][0]
+            return matches[0][0]
+        
+        phone_col = select_best_match(phone_matches)
+        firstname_col = select_best_match(firstname_matches)
+        lastname_col = select_best_match(lastname_matches)
+        name_col = select_best_match(name_matches)
+        
+        # Avoid using the same column for multiple purposes
+        # Firstname takes priority over generic name
+        if firstname_col and name_col and normalize_column_name(firstname_col) == normalize_column_name(name_col):
             name_col = None
+        
+        # Lastname takes priority over generic name
+        if lastname_col and name_col and normalize_column_name(lastname_col) == normalize_column_name(name_col):
+            name_col = None
+        
+        # Special handling: if we have a generic "nom" column and no firstname, use it as firstname
+        if name_col and not firstname_col:
+            name_normalized = normalize_column_name(name_col)
+            # Only reassign if it's specifically "nom" or a name-like column without lastname indicators
+            if name_normalized in ['nom', 'name', 'client', 'contact', 'customer']:
+                firstname_col = name_col
+                name_col = None
         
         if not phone_col:
             # Try to find any column with phone-like data
