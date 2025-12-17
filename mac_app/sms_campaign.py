@@ -31,7 +31,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.16"
+VERSION = "2.4.17"
 BUILD = 1
 
 # ============================================================================
@@ -53,20 +53,98 @@ CONFIG = {
     "phone_columns_partial": ["phone", "telephone", "mobile", "cell", "numero", "cellulaire", "portable"],
     "phone_columns_negative": [],  # No negative patterns for phone
     
-    "firstname_columns_exact": ["first_name", "firstname", "first", "prenom", "given_name", "givenname"],
-    "firstname_columns_partial": ["first_name", "firstname", "prenom", "given_name"],
+    "firstname_columns_exact": ["first_name", "firstname", "first", "prenom", "prnom", "given_name", "givenname"],
+    "firstname_columns_partial": ["first_name", "firstname", "prenom", "prnom", "given_name"],
     "firstname_columns_negative": [],  # No negative patterns
     
-    "lastname_columns_exact": ["last_name", "lastname", "last", "nom_famille", "family_name", "familyname", "surname"],
-    "lastname_columns_partial": ["last_name", "lastname", "famille", "family", "surname"],
+    "lastname_columns_exact": ["last_name", "lastname", "last", "nom", "nom_famille", "family_name", "familyname", "surname"],
+    "lastname_columns_partial": ["last_name", "lastname", "nom_de_famille", "famille", "family", "surname"],
     "lastname_columns_negative": ["prenom", "first"],  # Don't match if these are present
     
-    "name_columns_exact": ["name", "nom", "client", "customer", "contact", "fullname", "full_name"],
-    "name_columns_partial": ["name", "nom", "client", "customer", "contact"],
+    "name_columns_exact": ["name", "client", "customer", "contact", "fullname", "full_name"],
+    "name_columns_partial": ["name", "client", "customer", "contact"],
     "name_columns_negative": ["first", "last", "prenom", "famille", "family", "_id", "id_", "number", "phone", "file"],  # Don't match client_id, name_id, filename, etc.
     "phone_separators": ["|", ";", ",", "/", " "],
     "message_delay": 0.2
 }
+
+# Common Québécois/French compound first name prefixes
+# When a name starts with one of these, the first TWO words are likely the first name
+COMPOUND_FIRSTNAME_PREFIXES = {
+    # French compound prefixes (case-insensitive matching)
+    "marie", "jean", "marc", "anne", "pierre", "louis", "paul", "charles",
+    "marie-", "jean-", "marc-", "anne-", "pierre-", "louis-", "paul-", "charles-",
+    # Less common but still used
+    "marie eve", "marie-eve", "marie claire", "marie-claire", "marie claude", "marie-claude",
+    "marie pierre", "marie-pierre", "marie france", "marie-france", "marie josee", "marie-josée",
+    "marie helene", "marie-hélène", "marie christine", "marie-christine", "marie catherine", "marie-catherine",
+    "marie miliene", "marie-miliene",
+    "jean pierre", "jean-pierre", "jean francois", "jean-françois", "jean philippe", "jean-philippe",
+    "jean michel", "jean-michel", "jean patrick", "jean-patrick", "jean paul", "jean-paul",
+    "marc andre", "marc-andré", "marc olivier", "marc-olivier", "marc antoine", "marc-antoine",
+    "anne marie", "anne-marie", "anne sophie", "anne-sophie",
+    "pierre louis", "pierre-louis", "pierre olivier", "pierre-olivier",
+    "louis philippe", "louis-philippe",
+}
+
+def parse_full_name(full_name):
+    """
+    Parse a full name into firstname and lastname, handling Québécois compound names.
+    
+    Examples:
+    - "Marie Eve Bourgouin" -> ("Marie Eve", "Bourgouin")
+    - "Jean-Pierre Tremblay" -> ("Jean-Pierre", "Tremblay")
+    - "Marc Andre Juteau" -> ("Marc Andre", "Juteau")
+    - "Caroline Gauthier" -> ("Caroline", "Gauthier")
+    - "Veronique Racine Brule" -> ("Veronique", "Racine Brule")
+    """
+    if not full_name:
+        return "", ""
+    
+    full_name = full_name.strip()
+    
+    # If the name contains a hyphen, check if it's a compound first name
+    # e.g., "Jean-Pierre Tremblay" or "Marie-Eve Bourgouin"
+    parts = full_name.split()
+    
+    if len(parts) <= 1:
+        return full_name, ""
+    
+    if len(parts) == 2:
+        # Simple case: "Caroline Gauthier" -> ("Caroline", "Gauthier")
+        return parts[0], parts[1]
+    
+    # Check if first word is hyphenated (compound first name like "Jean-Pierre")
+    if "-" in parts[0]:
+        # First word is already compound, rest is lastname
+        return parts[0], " ".join(parts[1:])
+    
+    # Check if first two words form a known compound first name
+    first_two = f"{parts[0]} {parts[1]}".lower()
+    first_two_hyphen = f"{parts[0]}-{parts[1]}".lower()
+    first_word_lower = parts[0].lower()
+    
+    # Check for known compound patterns
+    if first_two in COMPOUND_FIRSTNAME_PREFIXES or first_two_hyphen in COMPOUND_FIRSTNAME_PREFIXES:
+        # First two words are the first name
+        return f"{parts[0]} {parts[1]}", " ".join(parts[2:]) if len(parts) > 2 else ""
+    
+    # Check if first word is a common compound prefix (Marie, Jean, Marc, etc.)
+    if first_word_lower in COMPOUND_FIRSTNAME_PREFIXES or f"{first_word_lower}-" in COMPOUND_FIRSTNAME_PREFIXES:
+        # Check if second word looks like a name component (not a typical lastname)
+        # Common second parts of compound first names
+        common_second_parts = {
+            "eve", "ève", "claire", "claude", "pierre", "france", "josee", "josée",
+            "helene", "hélène", "christine", "catherine", "miliene", "michèle", "michele",
+            "francois", "françois", "philippe", "michel", "patrick", "paul", "luc",
+            "andre", "andré", "olivier", "antoine", "louis", "marc",
+            "marie", "sophie", "anne",
+        }
+        if parts[1].lower() in common_second_parts:
+            return f"{parts[0]} {parts[1]}", " ".join(parts[2:]) if len(parts) > 2 else ""
+    
+    # Default: first word is firstname, rest is lastname
+    return parts[0], " ".join(parts[1:])
 
 # Known French accent replacements (using escape sequences to avoid encoding issues)
 KNOWN_REPLACEMENTS = {
@@ -572,7 +650,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <!-- Header -->
         <div class="header">
             <div>
-                <div class="title" id="app-title">Campagne SMS</div>
+                <div class="title" id="app-title">Campagne SMS{{DEBUG_SUFFIX}}</div>
                 <div class="version">v{{VERSION}}</div>
             </div>
         </div>
@@ -957,13 +1035,16 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         let currentLang = 'fr';
         
+        const DEBUG_MODE = {{DEBUG_MODE}};
+        
         function setLang(lang) {
             currentLang = lang;
             document.getElementById('lang-fr').classList.toggle('active', lang === 'fr');
             document.getElementById('lang-en').classList.toggle('active', lang === 'en');
             
-            // Update title based on language
-            document.getElementById('app-title').textContent = lang === 'fr' ? 'Campagne SMS' : 'SMS Campaign';
+            // Update title based on language (with DEBUG suffix if enabled)
+            const debugSuffix = DEBUG_MODE ? ' - DEBUG' : '';
+            document.getElementById('app-title').textContent = (lang === 'fr' ? 'Campagne SMS' : 'SMS Campaign') + debugSuffix;
             
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
@@ -1542,7 +1623,26 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         });
         
         // ===== START =====
-        init();
+        // Wait for pywebview to be ready before initializing
+        function waitForPywebview(callback, maxAttempts = 50) {
+            let attempts = 0;
+            function check() {
+                attempts++;
+                if (window.pywebview && window.pywebview.api) {
+                    callback();
+                } else if (attempts < maxAttempts) {
+                    setTimeout(check, 100);
+                } else {
+                    // Fallback: start anyway
+                    callback();
+                }
+            }
+            check();
+        }
+        
+        waitForPywebview(() => {
+            init();
+        });
     </script>
     
     <!-- Logo at top left -->
@@ -1808,12 +1908,16 @@ def normalize_column_name(name):
     if not name:
         return ""
     name = fix_french_accents(name)
+    # Remove replacement characters (�) that appear from encoding issues
+    name = name.replace('\ufffd', '').replace('�', '')
     # Remove accents
     name = remove_accents(name)
     # Lowercase and strip
     name = name.lower().strip()
     # Replace common separators with underscore for consistent matching
     name = re.sub(r'[\s\-]+', '_', name)
+    # Remove apostrophes and quotes
+    name = re.sub(r"['\"]", '', name)
     return name
 
 def match_column(normalized_name, exact_patterns, partial_patterns, negative_patterns):
@@ -1924,6 +2028,20 @@ def parse_csv(content, filename=""):
     # Detect separator
     sep = detect_separator(content)
     
+    # Skip empty header rows (rows where all values are empty)
+    lines = content.split('\n')
+    header_line_idx = 0
+    for i, line in enumerate(lines):
+        # Check if line has any non-empty values
+        values = line.split(sep)
+        if any(v.strip() for v in values):
+            header_line_idx = i
+            break
+    
+    # Rebuild content starting from actual header row
+    if header_line_idx > 0:
+        content = '\n'.join(lines[header_line_idx:])
+    
     # Parse CSV
     try:
         reader = csv.DictReader(StringIO(content), delimiter=sep)
@@ -2004,13 +2122,28 @@ def parse_csv(content, filename=""):
         if lastname_col and name_col and normalize_column_name(lastname_col) == normalize_column_name(name_col):
             name_col = None
         
-        # Special handling: if we have a generic "nom" column and no firstname, use it as firstname
-        if name_col and not firstname_col:
-            name_normalized = normalize_column_name(name_col)
-            # Only reassign if it's specifically "nom" or a name-like column without lastname indicators
-            if name_normalized in ['nom', 'name', 'client', 'contact', 'customer']:
-                firstname_col = name_col
-                name_col = None
+        # Special handling: if no firstname found, check for "name" column
+        if not firstname_col:
+            # Count columns that contain "name" in them (excluding lastname-like columns)
+            name_containing_cols = []
+            for original_header, normalized in normalized_headers:
+                if 'name' in normalized:
+                    # Exclude columns that are clearly lastname
+                    if not any(x in normalized for x in ['last', 'family', 'famille', 'nom_de_famille']):
+                        name_containing_cols.append(original_header)
+            
+            # If exactly 1 column contains "name", use it as firstname
+            if len(name_containing_cols) == 1:
+                firstname_col = name_containing_cols[0]
+                if name_col == firstname_col:
+                    name_col = None
+            # Otherwise, fall back to generic name column handling
+            elif name_col:
+                name_normalized = normalize_column_name(name_col)
+                # Only reassign if it's specifically "nom" or a name-like column without lastname indicators
+                if name_normalized in ['nom', 'name', 'client', 'contact', 'customer']:
+                    firstname_col = name_col
+                    name_col = None
         
         if not phone_col:
             # Try to find any column with phone-like data
@@ -2033,26 +2166,25 @@ def parse_csv(content, filename=""):
         for row in reader:
             phones = get_phones_from_value(row.get(phone_col, ""))
             
-            # Get firstname
-            if firstname_col:
+            # Get firstname and lastname
+            if firstname_col and lastname_col:
+                # Both columns exist - use them directly
                 firstname = fix_french_accents(row.get(firstname_col, "")).strip()
+                lastname = fix_french_accents(row.get(lastname_col, "")).strip()
+            elif firstname_col and not lastname_col:
+                # Only firstname column - use it as is
+                firstname = fix_french_accents(row.get(firstname_col, "")).strip()
+                lastname = ""
+            elif lastname_col and not firstname_col:
+                # Only lastname column - use it as is
+                firstname = ""
+                lastname = fix_french_accents(row.get(lastname_col, "")).strip()
             elif name_col:
-                # Split full name if we only have a name column
+                # Only a generic name column - parse it smartly for Québécois names
                 full_name = fix_french_accents(row.get(name_col, "")).strip()
-                parts = full_name.split(None, 1)
-                firstname = parts[0] if parts else ""
+                firstname, lastname = parse_full_name(full_name)
             else:
                 firstname = ""
-            
-            # Get lastname
-            if lastname_col:
-                lastname = fix_french_accents(row.get(lastname_col, "")).strip()
-            elif name_col and not firstname_col:
-                # Split full name
-                full_name = fix_french_accents(row.get(name_col, "")).strip()
-                parts = full_name.split(None, 1)
-                lastname = parts[1] if len(parts) > 1 else ""
-            else:
                 lastname = ""
             
             # Also include full name for backwards compatibility
@@ -2139,6 +2271,8 @@ class RequestHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == '/' or self.path == '/index.html':
             html = HTML_TEMPLATE.replace('{{VERSION}}', VERSION)
+            html = html.replace('{{DEBUG_MODE}}', 'true' if DEBUG_MODE else 'false')
+            html = html.replace('{{DEBUG_SUFFIX}}', ' - DEBUG' if DEBUG_MODE else '')
             self.send_response(200)
             self.send_header('Content-Type', 'text/html')
             self.end_headers()

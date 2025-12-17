@@ -409,8 +409,9 @@ def cmd_auto_commit():
     result = 0
     
     if mac_app_files_changed():
-        # Ensure DEBUG_MODE is disabled before commit
+        # Ensure DEBUG_MODE and TEST_UPDATE_MODE are disabled before commit
         ensure_debug_mode_off()
+        ensure_test_mode_off()
         
         print("\n=== Auto-bumping Mac version ===")
         result |= cmd_bump_mac("patch")
@@ -440,6 +441,27 @@ def ensure_debug_mode_off():
             print("✅ DEBUG_MODE set to False")
     except Exception as e:
         print(f"Warning: Could not check DEBUG_MODE: {e}")
+
+def ensure_test_mode_off():
+    """Ensure TEST_UPDATE_MODE is set to False in launcher_v2.py before committing."""
+    launcher_path = MAC_APP_DIR / "launcher_v2.py"
+    try:
+        with open(launcher_path, 'r') as f:
+            content = f.read()
+        
+        # Check if TEST_UPDATE_MODE is True
+        if 'TEST_UPDATE_MODE = True' in content:
+            print("⚠️  TEST_UPDATE_MODE was True, setting to False for release...")
+            content = content.replace('TEST_UPDATE_MODE = True', 'TEST_UPDATE_MODE = False')
+            
+            with open(launcher_path, 'w') as f:
+                f.write(content)
+            
+            # Stage the change
+            subprocess.run(["git", "add", str(launcher_path)], cwd=REPO_ROOT)
+            print("✅ TEST_UPDATE_MODE set to False")
+    except Exception as e:
+        print(f"Warning: Could not check TEST_UPDATE_MODE: {e}")
 
 def cmd_auto_build():
     """Build the Mac app if mac_app files are staged for commit."""

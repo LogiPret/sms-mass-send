@@ -30,6 +30,17 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # ============================================================================
 
 LAUNCHER_VERSION = "2.1.0"
+
+# TEST_MODE: Set to True to test updates locally without affecting production users
+# When True, downloads directly from TEST_RELEASE_URL (bypasses Gist entirely)
+# This is auto-disabled on git commit by version_manager.py
+TEST_UPDATE_MODE = False
+
+# Direct URL to test release ZIP - set this manually for testing
+# Example: "https://github.com/LogiPret/sms-mass-send/releases/download/v2.4.16-test/SMS.Campaign.zip"
+TEST_RELEASE_URL = "https://github.com/LogiPret/sms-mass-send/releases/download/beta.updater/SMS.Campaign.zip"
+TEST_RELEASE_VERSION = "9.9.9"  # Version to report for test release
+
 CONFIG = {
     "update_url": "https://gist.githubusercontent.com/hugootth/3e89759cac04be452c935c90b5733eea/raw/version.json",
     "main_app_folder": "SMSCampaignApp",
@@ -132,6 +143,12 @@ def get_local_version():
     return "0.0.0"
 
 def check_for_update():
+    # TEST MODE: Skip Gist entirely, use direct URL
+    if TEST_UPDATE_MODE and TEST_RELEASE_URL:
+        local = get_local_version()
+        log(f"[TEST MODE] Forcing update from direct URL: {local} -> {TEST_RELEASE_VERSION}")
+        return {"available": True, "version": TEST_RELEASE_VERSION, "url": TEST_RELEASE_URL, "local": local}
+    
     try:
         url = CONFIG["update_url"] + "?t=" + str(int(time.time()))
         req = Request(url, headers={"Cache-Control": "no-cache"})
@@ -141,6 +158,7 @@ def check_for_update():
             download_url = data.get("download_url", "")
             
             local = get_local_version()
+            
             local_parts = tuple(map(int, local.split('.')))
             remote_parts = tuple(map(int, remote.split('.')))
             
@@ -272,6 +290,7 @@ def main():
         update = check_for_update()
         local = update.get("local", "0.0.0")
         
+        # Only update if remote version is actually higher
         if update.get("available"):
             version = update["version"]
             url = update["url"]
@@ -285,7 +304,8 @@ def main():
                     set_status(f"Erreur: {err}")
                     time.sleep(1.5)
         
-        elif local == "0.0.0":
+        # Only do first-time install if app doesn't exist at all
+        elif local == "0.0.0" and not main_app_exists():
             set_status("Installation...")
             try:
                 url = CONFIG["update_url"] + "?t=" + str(int(time.time()))
