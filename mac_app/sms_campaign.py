@@ -31,8 +31,13 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.14"
+VERSION = "2.4.15"
 BUILD = 1
+
+# ============================================================================
+# DEBUG MODE - Set to True to skip actual SMS sending (for testing)
+# ============================================================================
+DEBUG_MODE = False
 
 CONFIG = {
     "webhook_url": "https://n8n-wwfb.onrender.com/webhook/05313c1f-7d0c-47db-bd5c-4ec846fda513",
@@ -2059,7 +2064,15 @@ def send_sms(phone, message):
     
     Uses SMS service type to ensure delivery to all phones (iPhone and Android).
     This requires an iPhone connected via Continuity/Text Message Forwarding.
+    
+    If DEBUG_MODE is True, skips actual sending and returns success.
     """
+    # Debug mode - skip actual sending
+    if DEBUG_MODE:
+        print(f"[DEBUG] Would send SMS to {phone}: {message[:50]}...")
+        time.sleep(0.1)  # Small delay to simulate sending
+        return {"success": True, "debug": True}
+    
     # Escape for AppleScript
     message_escaped = message.replace('\\', '\\\\').replace('"', '\\"')
     phone_escaped = phone.replace('\\', '\\\\').replace('"', '\\"')

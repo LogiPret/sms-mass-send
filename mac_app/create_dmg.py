@@ -173,10 +173,30 @@ def create_styled_dmg(app_path, output_dmg, volume_name="SMS Campaign"):
     ], capture_output=True)
     time_module.sleep(1)
     
-    # Unmount (use new mount point after rename)
+    # Unmount with retries (volume can be busy)
     new_mount_point = f"/Volumes/{volume_name}"
-    subprocess.run(["hdiutil", "detach", new_mount_point, "-quiet", "-force"], capture_output=True)
-    time_module.sleep(1)
+    for attempt in range(5):
+        # Try to detach
+        detach_result = subprocess.run(
+            ["hdiutil", "detach", new_mount_point, "-quiet", "-force"], 
+            capture_output=True, text=True
+        )
+        # Also try old mount point in case rename failed
+        subprocess.run(
+            ["hdiutil", "detach", mount_point, "-quiet", "-force"], 
+            capture_output=True
+        )
+        
+        time_module.sleep(2)
+        
+        # Check if unmounted
+        if not Path(new_mount_point).exists() and not Path(mount_point).exists():
+            break
+        
+        print(f"Volume still mounted, retry {attempt + 1}/5...")
+    
+    # Extra wait after unmount
+    time_module.sleep(2)
     
     # Remove output DMG if it exists (hdiutil convert doesn't have -ov flag)
     if output_dmg.exists():
