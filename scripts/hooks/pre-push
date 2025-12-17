@@ -1,5 +1,5 @@
 #!/bin/bash
-# Pre-push hook: Auto-release when version is higher than remote
+# Pre-push hook: Upload to release when version is higher than remote (no build)
 
 REPO_ROOT=$(git rev-parse --show-toplevel)
 SCRIPT="$REPO_ROOT/scripts/version_manager.py"

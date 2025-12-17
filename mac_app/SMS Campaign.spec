@@ -5,7 +5,7 @@ a = Analysis(
     ['sms_campaign.py'],
     pathex=[],
     binaries=[],
-    datas=[('version.json', '.'), ('icon.icns', '.')],
+    datas=[('version.json', '.'), ('icon.icns', '.'), ('logo.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

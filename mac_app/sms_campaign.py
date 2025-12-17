@@ -31,7 +31,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.15"
+VERSION = "2.4.16"
 BUILD = 1
 
 # ============================================================================
@@ -435,16 +435,15 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .progress-text { display: flex; justify-content: space-between; margin-top: 8px; font-size: 14px; color: var(--text-secondary); }
         
         .log-container {
-            max-height: 300px;
-            min-height: 100px;
+            height: 400px;
             overflow-y: scroll;
-            -webkit-overflow-scrolling: touch;
+            overflow-x: hidden;
             background: var(--bg-tertiary);
             border-radius: 12px;
             padding: 12px;
             font-family: 'SF Mono', Monaco, monospace;
             font-size: 12px;
-            scroll-behavior: smooth;
+            flex-shrink: 0;
         }
         
         .log-entry { padding: 6px 0; border-bottom: 1px solid var(--border); display: flex; align-items: flex-start; gap: 8px; }
@@ -733,6 +732,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         <div id="screen-sending" class="card fade-in hidden">
             <div class="card-title">
                 <span data-i18n="sending_title">Envoi en cours...</span>
+                <span id="sending-complete-label" class="hidden" style="color:var(--success);font-size:14px;margin-left:8px;">✓</span>
             </div>
             <div class="progress-container">
                 <div class="progress-bar">
@@ -745,6 +745,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             </div>
             <div class="log-container" id="send-log"></div>
             <button class="btn btn-warning btn-full" id="btn-pause" style="margin-top: 16px;" data-i18n="pause_sending">Pause</button>
+            <button class="btn btn-primary btn-full hidden" id="btn-back-to-summary" style="margin-top: 16px;" data-i18n="back_to_summary">Retour au résumé</button>
         </div>
         
         <!-- Pause Modal -->
@@ -798,7 +799,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     <div class="stat-label" data-i18n="stat_skipped">Ignorés</div>
                 </div>
             </div>
-            <button class="btn btn-primary btn-full" id="btn-close-app" style="margin-top: 20px;" data-i18n="close_app">✕ Fermer</button>
+            <div class="btn-group" style="margin-top: 20px;">
+                <button class="btn btn-secondary" id="btn-view-logs" data-i18n="view_logs">📋 Voir les logs</button>
+                <button class="btn btn-primary" id="btn-close-app" data-i18n="close_app">✕ Fermer</button>
+            </div>
         </div>
     </div>
     
@@ -862,6 +866,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 stat_failed: "Échoués",
                 stat_skipped: "Ignorés",
                 close_app: "✕ Fermer",
+                view_logs: "📋 Voir les logs",
+                back_to_summary: "Retour au résumé",
                 update_available: "Version",
                 available: "disponible!",
                 update_now: "Mettre à jour",
@@ -932,6 +938,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 stat_failed: "Failed",
                 stat_skipped: "Skipped",
                 close_app: "✕ Close",
+                view_logs: "📋 View logs",
+                back_to_summary: "Back to summary",
                 update_available: "Version",
                 available: "available!",
                 update_now: "Update Now",
@@ -1039,7 +1047,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         // Resize window based on content
         function resizeToContent(screenId) {
-            if (!window.pywebview || !window.pywebview.api) return;
+            if (!window.pywebview || !window.pywebview.api) {
+                // Retry after a short delay if pywebview not ready yet
+                setTimeout(() => resizeToContent(screenId), 100);
+                return;
+            }
             
             const width = screenWidths[screenId] || 550;
             const height = calculateContentHeight(screenId);
@@ -1459,13 +1471,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     logEntry = `<div class="log-entry"><span class="log-time">${time}</span><span style="color:#ff453a">Error</span><span class="log-message">${contact.firstname || 'Contact'}: ${result.error || 'Failed'}</span></div>`;
                 }
                 
-                // Keep only last 15 entries
-                logEntries.push(logEntry);
-                if (logEntries.length > maxLogEntries) {
-                    logEntries.shift();
-                }
-                log.innerHTML = logEntries.join('');
-                log.scrollTop = log.scrollHeight;
+                // Append log entry directly (more efficient than rewriting innerHTML)
+                log.insertAdjacentHTML('beforeend', logEntry);
+                // Force scroll to bottom
+                setTimeout(() => { log.scrollTop = log.scrollHeight; }, 10);
                 
                 const progress = ((i + 1) / total * 100).toFixed(0);
                 document.getElementById('progress-fill').style.width = progress + '%';
@@ -1518,9 +1527,28 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             }
         });
         
+        // View logs button - go back to sending screen to view logs
+        document.getElementById('btn-view-logs').addEventListener('click', () => {
+            // Hide pause button, show back button
+            document.getElementById('btn-pause').classList.add('hidden');
+            document.getElementById('btn-back-to-summary').classList.remove('hidden');
+            document.getElementById('sending-complete-label').classList.remove('hidden');
+            showScreen('screen-sending');
+        });
+        
+        // Back to summary button - return to complete screen
+        document.getElementById('btn-back-to-summary').addEventListener('click', () => {
+            showScreen('screen-complete');
+        });
+        
         // ===== START =====
         init();
     </script>
+    
+    <!-- Logo at top left -->
+    <div style="position:fixed;top:15px;left:15px;opacity:0.5;z-index:1">
+        <img src="/logo" style="height:28px;" onerror="this.style.display='none'">
+    </div>
 </body>
 </html>
 '''
@@ -2115,6 +2143,19 @@ class RequestHandler(BaseHTTPRequestHandler):
             self.send_header('Content-Type', 'text/html')
             self.end_headers()
             self.wfile.write(html.encode('utf-8'))
+        elif self.path == '/logo':
+            # Serve the logo image
+            logo_path = os.path.join(os.path.dirname(__file__), 'logo.png')
+            if os.path.exists(logo_path):
+                with open(logo_path, 'rb') as f:
+                    logo_data = f.read()
+                self.send_response(200)
+                self.send_header('Content-Type', 'image/png')
+                self.send_header('Content-Length', len(logo_data))
+                self.end_headers()
+                self.wfile.write(logo_data)
+            else:
+                self.send_error(404, 'Logo not found')
         else:
             self.send_error(404)
     

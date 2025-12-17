@@ -15,6 +15,7 @@ import time
 import traceback
 import ssl
 import threading
+import base64
 from datetime import datetime
 from urllib.request import urlopen, Request
 import webview  # Import at top level for PyInstaller
@@ -71,6 +72,17 @@ def get_main_app_dir():
     os.makedirs(app_dir, exist_ok=True)
     return app_dir
 
+def get_logo_base64():
+    """Load logo.png and return as base64 string"""
+    try:
+        logo_path = os.path.join(os.path.dirname(__file__), 'logo.png')
+        if os.path.exists(logo_path):
+            with open(logo_path, 'rb') as f:
+                return base64.b64encode(f.read()).decode('utf-8')
+    except:
+        pass
+    return ""
+
 # ============================================================================
 # LOADING WINDOW HTML
 # ============================================================================
@@ -96,6 +108,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,sans-serif;background:linear-g
 <div class="subtitle">Chargement...</div>
 <div class="spinner"></div>
 <div class="status" id="status"></div>
+<div style="position:fixed;top:15px;left:15px;opacity:0.6">
+<img src="data:image/png;base64,{{LOGO_BASE64}}" style="height:30px;" onerror="this.style.display='none'">
+</div>
 <script>
 function setStatus(t){document.getElementById('status').textContent=t}
 </script>
@@ -232,10 +247,13 @@ def main():
     log(f"Launcher v{LAUNCHER_VERSION} started")
     cleanup_signal()
     
+    # Inject logo into HTML
+    html_content = LOADING_HTML.replace('{{LOGO_BASE64}}', get_logo_base64())
+    
     # ALWAYS create window IMMEDIATELY - no checks before this
     window = webview.create_window(
         "Campagne SMS",
-        html=LOADING_HTML,
+        html=html_content,
         width=400,
         height=350,
         resizable=False,

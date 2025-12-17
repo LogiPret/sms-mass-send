@@ -225,7 +225,7 @@ def update_mobile_gist(version):
     return True
 
 def create_github_release(version):
-    """Create a GitHub release with the built app."""
+    """Create a GitHub release and upload pre-built files (no building here)."""
     print(f"Creating GitHub release v{version}...")
     
     # Check if gh CLI is available
@@ -234,111 +234,25 @@ def create_github_release(version):
         print("GitHub CLI (gh) not found. Install with: brew install gh")
         return False
     
-    # Build the main app first
-    print("Building SMS Campaign.app (main app)...")
-    build_result = subprocess.run(
-        ["pyinstaller", "-y", "--onefile", "--windowed", 
-         "--name", "SMS Campaign", 
-         "--add-data", "version.json:.",
-         "sms_campaign.py"],
-        cwd=MAC_APP_DIR,
-        capture_output=True, text=True
-    )
-    
-    if build_result.returncode != 0:
-        print(f"Build failed: {build_result.stderr}")
-        return False
-    
-    # Create ZIP (for auto-updater)
-    print("Creating ZIP archive...")
+    # Check for pre-built files
     zip_path = MAC_APP_DIR / "dist" / "SMS.Campaign.zip"
-    app_path = MAC_APP_DIR / "dist" / "SMS Campaign.app"
-    
-    subprocess.run(["rm", "-f", str(zip_path)], cwd=MAC_APP_DIR / "dist")
-    zip_result = subprocess.run(
-        ["zip", "-r", "SMS.Campaign.zip", "SMS Campaign.app"],
-        cwd=MAC_APP_DIR / "dist",
-        capture_output=True, text=True
-    )
+    dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
     
     if not zip_path.exists():
-        print("Failed to create ZIP")
+        print(f"❌ ZIP not found: {zip_path}")
+        print("   Run 'git commit' first to build the app, or run: python3 scripts/version_manager.py build")
         return False
-    
-    # Build the launcher
-    print("Building SMS Campaign Launcher.app...")
-    launcher_path = MAC_APP_DIR / "launcher_v2.py"
-    if launcher_path.exists():
-        launcher_build = subprocess.run(
-            ["pyinstaller", "-y", "--onefile", "--windowed", 
-             "--name", "SMS Campaign Launcher", 
-             "launcher_v2.py"],
-            cwd=MAC_APP_DIR,
-            capture_output=True, text=True
-        )
-        
-        if launcher_build.returncode != 0:
-            print(f"Launcher build failed: {launcher_build.stderr}")
-            # Continue anyway, launcher is optional
-        else:
-            # Create styled DMG installer using create_dmg.py
-            print("Creating styled DMG installer...")
-            create_dmg_script = MAC_APP_DIR / "create_dmg.py"
-            if create_dmg_script.exists():
-                dmg_result = subprocess.run(
-                    ["python3", str(create_dmg_script)],
-                    cwd=MAC_APP_DIR,
-                    capture_output=True, text=True
-                )
-                if dmg_result.returncode != 0:
-                    print(f"Styled DMG failed, using basic DMG: {dmg_result.stderr}")
-                    # Fallback to basic DMG
-                    dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
-                    dmg_temp = MAC_APP_DIR / "dist" / "dmg_temp"
-                    
-                    subprocess.run(["rm", "-rf", str(dmg_temp), str(dmg_path)], cwd=MAC_APP_DIR / "dist")
-                    subprocess.run(["mkdir", "-p", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
-                    subprocess.run(["cp", "-R", "SMS Campaign Launcher.app", str(dmg_temp / "SMS Campaign.app")], cwd=MAC_APP_DIR / "dist")
-                    subprocess.run(["ln", "-s", "/Applications", str(dmg_temp / "Applications")], cwd=MAC_APP_DIR / "dist")
-                    
-                    subprocess.run(
-                        ["hdiutil", "create", "-volname", "SMS Campaign", 
-                         "-srcfolder", str(dmg_temp), "-ov", "-format", "UDZO", str(dmg_path)],
-                        cwd=MAC_APP_DIR / "dist",
-                        capture_output=True, text=True
-                    )
-                    subprocess.run(["rm", "-rf", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
-                else:
-                    print("✅ Styled DMG installer created")
-            else:
-                # Basic DMG fallback
-                print("Creating basic DMG installer...")
-                dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
-                dmg_temp = MAC_APP_DIR / "dist" / "dmg_temp"
-                
-                subprocess.run(["rm", "-rf", str(dmg_temp), str(dmg_path)], cwd=MAC_APP_DIR / "dist")
-                subprocess.run(["mkdir", "-p", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
-                subprocess.run(["cp", "-R", "SMS Campaign Launcher.app", str(dmg_temp / "SMS Campaign.app")], cwd=MAC_APP_DIR / "dist")
-                subprocess.run(["ln", "-s", "/Applications", str(dmg_temp / "Applications")], cwd=MAC_APP_DIR / "dist")
-                
-                subprocess.run(
-                    ["hdiutil", "create", "-volname", "SMS Campaign", 
-                     "-srcfolder", str(dmg_temp), "-ov", "-format", "UDZO", str(dmg_path)],
-                    cwd=MAC_APP_DIR / "dist",
-                    capture_output=True, text=True
-                )
-                subprocess.run(["rm", "-rf", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
-                print("✅ Basic DMG installer created")
-    
-    # Create GitHub release
-    print(f"Creating GitHub release v{version}...")
     
     # Prepare list of files to upload
     release_files = [str(zip_path)]
-    dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
     if dmg_path.exists():
         release_files.append(str(dmg_path))
+    else:
+        print(f"⚠️  DMG not found (optional): {dmg_path}")
     
+    print(f"Uploading: {', '.join([Path(f).name for f in release_files])}")
+    
+    # Create GitHub release
     release_result = subprocess.run(
         ["gh", "release", "create", f"v{version}"] + release_files + [
          "--title", f"SMS Campaign v{version}",
@@ -495,6 +409,9 @@ def cmd_auto_commit():
     result = 0
     
     if mac_app_files_changed():
+        # Ensure DEBUG_MODE is disabled before commit
+        ensure_debug_mode_off()
+        
         print("\n=== Auto-bumping Mac version ===")
         result |= cmd_bump_mac("patch")
     
@@ -504,8 +421,147 @@ def cmd_auto_commit():
     
     return result
 
+def ensure_debug_mode_off():
+    """Ensure DEBUG_MODE is set to False in sms_campaign.py before committing."""
+    try:
+        with open(MAC_SMS_CAMPAIGN_PY, 'r') as f:
+            content = f.read()
+        
+        # Check if DEBUG_MODE is True
+        if 'DEBUG_MODE = True' in content:
+            print("⚠️  DEBUG_MODE was True, setting to False for release...")
+            content = content.replace('DEBUG_MODE = True', 'DEBUG_MODE = False')
+            
+            with open(MAC_SMS_CAMPAIGN_PY, 'w') as f:
+                f.write(content)
+            
+            # Stage the change
+            subprocess.run(["git", "add", str(MAC_SMS_CAMPAIGN_PY)], cwd=REPO_ROOT)
+            print("✅ DEBUG_MODE set to False")
+    except Exception as e:
+        print(f"Warning: Could not check DEBUG_MODE: {e}")
+
+def cmd_auto_build():
+    """Build the Mac app if mac_app files are staged for commit."""
+    if not mac_app_files_changed():
+        return 0
+    
+    print("\n=== Building Mac App ===")
+    return cmd_build()
+
+def cmd_build():
+    """Build the Mac app (main app, launcher, ZIP, DMG)."""
+    version = get_local_version("mac")
+    print(f"Building SMS Campaign v{version}...")
+    
+    icon_path = MAC_APP_DIR / "icon.icns"
+    
+    # Build the main app using spec file
+    print("Building SMS Campaign.app (main app)...")
+    build_result = subprocess.run(
+        ["pyinstaller", "-y", "SMS Campaign.spec"],
+        cwd=MAC_APP_DIR,
+        capture_output=True, text=True
+    )
+    
+    if build_result.returncode != 0:
+        print(f"Build failed: {build_result.stderr}")
+        return 1
+    
+    # Copy custom icon to app bundle (PyInstaller doesn't always do this correctly)
+    if icon_path.exists():
+        app_icon_path = MAC_APP_DIR / "dist" / "SMS Campaign.app" / "Contents" / "Resources" / "icon-windowed.icns"
+        subprocess.run(["cp", str(icon_path), str(app_icon_path)], cwd=MAC_APP_DIR)
+        subprocess.run(["touch", str(MAC_APP_DIR / "dist" / "SMS Campaign.app")], cwd=MAC_APP_DIR)
+    
+    print("✅ Main app built")
+    
+    # Create ZIP (for auto-updater)
+    print("Creating ZIP archive...")
+    zip_path = MAC_APP_DIR / "dist" / "SMS.Campaign.zip"
+    
+    subprocess.run(["rm", "-f", str(zip_path)], cwd=MAC_APP_DIR / "dist")
+    zip_result = subprocess.run(
+        ["zip", "-r", "SMS.Campaign.zip", "SMS Campaign.app"],
+        cwd=MAC_APP_DIR / "dist",
+        capture_output=True, text=True
+    )
+    
+    if not zip_path.exists():
+        print("Failed to create ZIP")
+        return 1
+    
+    print("✅ ZIP created")
+    
+    # Build the launcher using spec file
+    print("Building SMS Campaign Launcher.app...")
+    launcher_spec = MAC_APP_DIR / "SMS Campaign Launcher.spec"
+    if launcher_spec.exists():
+        launcher_build = subprocess.run(
+            ["pyinstaller", "-y", "SMS Campaign Launcher.spec"],
+            cwd=MAC_APP_DIR,
+            capture_output=True, text=True
+        )
+        
+        if launcher_build.returncode != 0:
+            print(f"Launcher build failed: {launcher_build.stderr}")
+        else:
+            # Copy custom icon to launcher bundle
+            if icon_path.exists():
+                launcher_icon_path = MAC_APP_DIR / "dist" / "SMS Campaign Launcher.app" / "Contents" / "Resources" / "icon-windowed.icns"
+                subprocess.run(["cp", str(icon_path), str(launcher_icon_path)], cwd=MAC_APP_DIR)
+                subprocess.run(["touch", str(MAC_APP_DIR / "dist" / "SMS Campaign Launcher.app")], cwd=MAC_APP_DIR)
+            
+            print("✅ Launcher built")
+            
+            # Create styled DMG installer
+            print("Creating styled DMG installer...")
+            create_dmg_script = MAC_APP_DIR / "create_dmg.py"
+            if create_dmg_script.exists():
+                dmg_result = subprocess.run(
+                    ["python3", str(create_dmg_script)],
+                    cwd=MAC_APP_DIR,
+                    capture_output=True, text=True
+                )
+                if dmg_result.returncode != 0:
+                    print(f"Styled DMG failed: {dmg_result.stderr}")
+                    # Create basic DMG as fallback
+                    create_basic_dmg()
+                else:
+                    print("✅ Styled DMG created")
+            else:
+                create_basic_dmg()
+    
+    print(f"\n✅ Build complete! Files in {MAC_APP_DIR / 'dist'}:")
+    for f in (MAC_APP_DIR / "dist").iterdir():
+        if f.is_file():
+            size = f.stat().st_size / 1024 / 1024
+            print(f"   {f.name} ({size:.1f} MB)")
+    
+    return 0
+
+def create_basic_dmg():
+    """Create a basic DMG without styling."""
+    print("Creating basic DMG installer...")
+    dmg_path = MAC_APP_DIR / "dist" / "SMS.Campaign.Installer.dmg"
+    dmg_temp = MAC_APP_DIR / "dist" / "dmg_temp"
+    
+    subprocess.run(["rm", "-rf", str(dmg_temp), str(dmg_path)], cwd=MAC_APP_DIR / "dist")
+    subprocess.run(["mkdir", "-p", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
+    subprocess.run(["cp", "-R", "SMS Campaign Launcher.app", str(dmg_temp / "SMS Campaign.app")], cwd=MAC_APP_DIR / "dist")
+    subprocess.run(["ln", "-s", "/Applications", str(dmg_temp / "Applications")], cwd=MAC_APP_DIR / "dist")
+    
+    subprocess.run(
+        ["hdiutil", "create", "-volname", "SMS Campaign", 
+         "-srcfolder", str(dmg_temp), "-ov", "-format", "UDZO", str(dmg_path)],
+        cwd=MAC_APP_DIR / "dist",
+        capture_output=True, text=True
+    )
+    subprocess.run(["rm", "-rf", str(dmg_temp)], cwd=MAC_APP_DIR / "dist")
+    print("✅ Basic DMG created")
+
 def cmd_auto_push():
-    """Auto-release on push if version is higher."""
+    """Auto-release on push if version is higher (upload only, no build)."""
     return cmd_release()
 
 if __name__ == "__main__":
@@ -516,8 +572,10 @@ if __name__ == "__main__":
         print("  bump        - Bump patch version")
         print("  bump-minor  - Bump minor version")
         print("  bump-major  - Bump major version")
-        print("  release     - Create GitHub release")
+        print("  build       - Build the Mac app (ZIP + DMG)")
+        print("  release     - Create GitHub release (upload only)")
         print("  auto-commit - Auto-bump on commit (for pre-commit hook)")
+        print("  auto-build  - Auto-build on commit (for pre-commit hook)")
         print("  auto-push   - Auto-release on push (for pre-push hook)")
         sys.exit(1)
     
@@ -531,10 +589,14 @@ if __name__ == "__main__":
         sys.exit(cmd_bump("minor"))
     elif cmd == "bump-major":
         sys.exit(cmd_bump("major"))
+    elif cmd == "build":
+        sys.exit(cmd_build())
     elif cmd == "release":
         sys.exit(cmd_release())
     elif cmd == "auto-commit":
         sys.exit(cmd_auto_commit())
+    elif cmd == "auto-build":
+        sys.exit(cmd_auto_build())
     elif cmd == "auto-push":
         sys.exit(cmd_auto_push())
     else:
