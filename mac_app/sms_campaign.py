@@ -31,7 +31,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.19"
+VERSION = "2.4.20"
 BUILD = 1
 
 # ============================================================================
@@ -193,10 +193,25 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             min-height: 100vh;
             line-height: 1.5;
             -webkit-font-smoothing: antialiased;
-            overflow: hidden;
+            overflow-y: auto;
+            overflow-x: hidden;
         }
         
-        .container { max-width: 1000px; margin: 0 auto; padding: 16px; }
+        .container { 
+            max-width: 1000px; 
+            margin: 0 auto; 
+            padding: 16px;
+            min-height: calc(100vh - 32px);
+            display: flex;
+            flex-direction: column;
+        }
+        
+        /* Make cards fill available space when needed */
+        .card.flex-fill {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
         
         .header {
             text-align: center;
@@ -205,6 +220,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             align-items: center;
             justify-content: center;
             gap: 16px;
+            flex-shrink: 0;
         }
         
         .header-left { display: flex; align-items: center; gap: 12px; }
@@ -305,6 +321,80 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         input:focus, textarea:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2); }
         textarea { min-height: 120px; resize: none; }
         
+        /* Step 2 layout - fixed header/footer, flexible middle */
+        #screen-step2 {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #screen-step2 .step2-header {
+            flex-shrink: 0;
+        }
+        #screen-step2 .step2-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+        #screen-step2 .step2-editors {
+            flex: 1;
+            display: flex;
+            flex-direction: row;
+            gap: 16px;
+            min-height: 0;
+            overflow: hidden;
+        }
+        #screen-step2 .step2-editors > .form-group,
+        #screen-step2 .step2-editors > #message-preview-box {
+            flex: 1;
+            min-width: 0;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        #screen-step2 .step2-editors .form-group {
+            margin-bottom: 0;
+        }
+        #screen-step2 .step2-editors label {
+            flex-shrink: 0;
+            margin-bottom: 8px;
+        }
+        #screen-step2 .step2-editors .form-group textarea {
+            flex: 1;
+            min-height: 80px;
+            resize: none;
+            overflow-y: auto;
+        }
+        #screen-step2 #message-preview-box .message-preview {
+            flex: 1;
+            min-height: 80px;
+            overflow-y: auto;
+            margin-top: 0;
+        }
+        #screen-step2 .step2-footer {
+            flex-shrink: 0;
+            padding-top: 16px;
+        }
+        
+        /* Body should not scroll when step2 is active */
+        body.step2-active {
+            overflow: hidden;
+        }
+        body.step2-active .container {
+            height: 100vh;
+            overflow: hidden;
+        }
+        body.step2-active #screen-step2 {
+            flex: 1;
+            min-height: 0;
+        }
+        #screen-step2 .step2-footer {
+            flex-shrink: 0;
+            margin-top: 16px;
+        }
+        
         .btn {
             display: inline-flex;
             align-items: center;
@@ -350,7 +440,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         .file-name { color: var(--success); font-weight: 600; margin-top: 8px; }
         
         .contacts-table-wrapper {
-            max-height: 350px;
+            max-height: 180px;
             overflow-y: auto;
             margin-top: 16px;
             border-radius: 12px;
@@ -712,26 +802,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         <!-- Step 2: Compose Message -->
         <div id="screen-step2" class="card fade-in hidden">
-            <div class="card-title">
-                <span class="step-num">2</span>
-                <span data-i18n="step2_title">Rédigez votre message</span>
-            </div>
-            <div class="form-group">
-                <label data-i18n="insert_var">Insérer une variable :</label>
-                <div class="var-buttons">
-                    <button class="var-btn" id="btn-var-prenom">Prénom</button>
-                    <button class="var-btn" id="btn-var-nom">Nom</button>
+            <div class="step2-header">
+                <div class="card-title">
+                    <span class="step-num">2</span>
+                    <span data-i18n="step2_title">Rédigez votre message</span>
+                </div>
+                <div class="form-group" style="margin-bottom: 12px;">
+                    <label data-i18n="insert_var">Insérer une variable :</label>
+                    <div class="var-buttons">
+                        <button class="var-btn" id="btn-var-prenom" data-i18n="var_firstname">Prénom</button>
+                        <button class="var-btn" id="btn-var-nom" data-i18n="var_lastname">Nom</button>
+                    </div>
                 </div>
             </div>
-            <div class="form-group">
-                <label data-i18n="message_label">Votre message</label>
-                <textarea id="message-input" data-i18n-placeholder="message_placeholder" placeholder="Bonjour {{prenom}}, votre rendez-vous est confirmé!" style="color: var(--text-primary);"></textarea>
+            <div class="step2-content">
+                <div class="step2-editors">
+                    <div class="form-group">
+                        <label data-i18n="message_label">Votre message</label>
+                        <textarea id="message-input" data-i18n-placeholder="message_placeholder" placeholder="Bonjour {{prenom}}, votre rendez-vous est confirmé!" style="color: var(--text-primary);"></textarea>
+                    </div>
+                    <div id="message-preview-box">
+                        <label data-i18n="preview_label">Aperçu (premier contact) :</label>
+                        <div class="message-preview" id="message-preview"></div>
+                    </div>
+                </div>
             </div>
-            <div id="message-preview-box">
-                <label data-i18n="preview_label">Aperçu (premier contact) :</label>
-                <div class="message-preview" id="message-preview" style="min-height: 60px;"></div>
-            </div>
-            <div class="btn-group">
+            <div class="step2-footer btn-group">
                 <button class="btn btn-secondary" id="btn-back-to-step1" data-i18n="back">← Retour</button>
                 <button class="btn btn-primary" id="btn-to-step3" disabled data-i18n="next_step">Continuer →</button>
             </div>
@@ -764,7 +860,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <!-- Valid contacts column -->
                 <div style="flex: 1; min-width: 0;">
                     <div class="section-title" style="margin-top: 0; margin-bottom: 8px;"><span data-i18n="valid_contacts_title">Contacts valides</span></div>
-                    <div class="contacts-table-wrapper" style="max-height: 220px; overflow-y: auto; overflow-x: hidden;">
+                    <div class="contacts-table-wrapper" style="max-height: 280px; overflow-y: auto; overflow-x: hidden;">
                         <table class="contacts-table" style="table-layout: fixed; width: 100%;">
                             <thead>
                                 <tr>
@@ -782,7 +878,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 <!-- Skipped contacts column -->
                 <div id="skipped-section" style="flex: 1; min-width: 0;">
                     <div class="section-title" style="margin-top: 0; margin-bottom: 8px;"><span data-i18n="skipped_contacts_title">Contacts ignorés</span></div>
-                    <div class="contacts-table-wrapper" style="max-height: 220px; overflow-y: auto; overflow-x: hidden;">
+                    <div class="contacts-table-wrapper" style="max-height: 280px; overflow-y: auto; overflow-x: hidden;">
                         <table class="contacts-table" style="table-layout: fixed; width: 100%;">
                             <thead>
                                 <tr>
@@ -796,9 +892,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </div>
                 </div>
             </div>
-            
-            <div class="section-title" style="margin-top: 8px; margin-bottom: 8px;"><span data-i18n="message_preview_title">Aperçu du message</span></div>
-            <div class="message-preview" id="dashboard-preview" style="min-height: 40px; padding: 12px;"></div>
             
             <div class="btn-group" style="margin-top: 12px;">
                 <button class="btn btn-secondary" id="btn-back-to-step2" data-i18n="back">← Retour</button>
@@ -914,6 +1007,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 message_label: "Votre message",
                 message_placeholder: "Bonjour {{prenom}}, votre rendez-vous est confirmé!",
                 preview_label: "Aperçu (premier contact) :",
+                var_firstname: "Prénom",
+                var_lastname: "Nom",
                 step3_title: "Vérification des contacts",
                 separator_detected: "Séparateur détecté:",
                 valid_contacts: "VALIDES",
@@ -985,8 +1080,10 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 step2_title: "Compose your message",
                 insert_var: "Insert variable:",
                 message_label: "Your message",
-                message_placeholder: "Hello {{prenom}}, your appointment is confirmed!",
+                message_placeholder: "Hello {{firstname}}, your appointment is confirmed!",
                 preview_label: "Preview (first contact):",
+                var_firstname: "First Name",
+                var_lastname: "Last Name",
                 step3_title: "Contact Verification",
                 separator_detected: "Separator detected:",
                 valid_contacts: "VALID",
@@ -1126,13 +1223,32 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             
             // Add minimum heights and screen-specific max caps
             const minHeight = 400;
-            const maxHeight = screenId === 'screen-step3' ? 1100 : 900;
+            const maxHeight = screenId === 'screen-step3' ? 900 : 700;
             
             return Math.max(minHeight, Math.min(maxHeight, totalHeight));
         }
         
+        // Screens that should NOT auto-resize (allow user to resize freely)
+        const noAutoResizeScreens = ['screen-step2'];
+        
+        // Minimum sizes for each screen (prevents users from making them too small)
+        const screenMinSizes = {
+            'screen-loading': { width: 450, height: 350 },
+            'screen-activation': { width: 480, height: 400 },
+            'screen-step1': { width: 500, height: 450 },
+            'screen-step2': { width: 700, height: 800 },
+            'screen-step3': { width: 800, height: 500 },
+            'screen-sending': { width: 500, height: 400 },
+            'screen-complete': { width: 450, height: 350 }
+        };
+        
         // Resize window based on content
         function resizeToContent(screenId) {
+            // Skip auto-resize for screens that should allow free resizing
+            if (noAutoResizeScreens.includes(screenId)) {
+                return;
+            }
+            
             if (!window.pywebview || !window.pywebview.api) {
                 // Retry after a short delay if pywebview not ready yet
                 setTimeout(() => resizeToContent(screenId), 100);
@@ -1150,19 +1266,43 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         }
         
         function showScreen(id) {
-            allScreens.forEach(s => document.getElementById(s).classList.add('hidden'));
-            document.getElementById(id).classList.remove('hidden');
-            
-            // Use requestAnimationFrame to ensure DOM is updated before measuring
-            requestAnimationFrame(() => {
-                resizeToContent(id);
+            allScreens.forEach(s => {
+                const el = document.getElementById(s);
+                el.classList.add('hidden');
+                el.classList.remove('flex-fill');
             });
+            const screen = document.getElementById(id);
+            screen.classList.remove('hidden');
+            
+            // Set minimum size for this screen
+            const minSize = screenMinSizes[id] || { width: 450, height: 400 };
+            if (window.pywebview && window.pywebview.api) {
+                window.pywebview.api.set_min_size(minSize.width, minSize.height);
+            }
+            
+            // Handle step2 special layout (larger size, fills window)
+            if (id === 'screen-step2') {
+                document.body.classList.add('step2-active');
+                screen.classList.add('flex-fill');
+                // Set larger size for step 2 (side-by-side layout)
+                setTimeout(() => {
+                    if (window.pywebview && window.pywebview.api) {
+                        window.pywebview.api.resize(900, 800);
+                    }
+                }, 50);
+            } else {
+                document.body.classList.remove('step2-active');
+                // Auto-resize to fit content for other screens
+                requestAnimationFrame(() => {
+                    resizeToContent(id);
+                });
+            }
         }
         
         // Resize current screen (call after content changes)
         function resizeCurrentScreen() {
             const currentScreen = allScreens.find(s => !document.getElementById(s).classList.contains('hidden'));
-            if (currentScreen) {
+            if (currentScreen && !noAutoResizeScreens.includes(currentScreen)) {
                 resizeToContent(currentScreen);
             }
         }
@@ -1290,12 +1430,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         const messageInput = document.getElementById('message-input');
         
         document.getElementById('btn-var-prenom').addEventListener('click', () => {
-            insertAtCursor(messageInput, '{{prenom}} ');
+            const varName = currentLang === 'en' ? '{{firstname}}' : '{{prenom}}';
+            insertAtCursor(messageInput, varName + ' ');
             messageInput.dispatchEvent(new Event('input'));
         });
         
         document.getElementById('btn-var-nom').addEventListener('click', () => {
-            insertAtCursor(messageInput, '{{nom}} ');
+            const varName = currentLang === 'en' ? '{{lastname}}' : '{{nom}}';
+            insertAtCursor(messageInput, varName + ' ');
             messageInput.dispatchEvent(new Event('input'));
         });
         
@@ -1323,10 +1465,11 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
             const lastName = firstContact?.lastname || '';
             
             let preview = messageTemplate || '';
+            const varStyle = 'background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px';
             preview = preview
-                .replace(/\\{\\{prenom\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstName}</span>`)
-                .replace(/\\{\\{nom\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${lastName}</span>`)
-                .replace(/\\{\\{name\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstName}</span>`);
+                .replace(/\\{\\{prenom\\}\\}|\\{\\{firstname\\}\\}/gi, `<span style="${varStyle}">${firstName}</span>`)
+                .replace(/\\{\\{nom\\}\\}|\\{\\{lastname\\}\\}/gi, `<span style="${varStyle}">${lastName}</span>`)
+                .replace(/\\{\\{name\\}\\}/gi, `<span style="${varStyle}">${firstName}</span>`);
             
             document.getElementById('message-preview').innerHTML = preview;
             
@@ -1423,15 +1566,6 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                     </tr>`;
                 });
             }
-            
-            // Message preview (like mobile app) with highlighted variables
-            const firstValid = validatedContacts[0];
-            const preview = firstValid ? messageTemplate
-                .replace(/\\{\\{prenom\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstValid.firstname || 'Client'}</span>`)
-                .replace(/\\{\\{nom\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstValid.lastname || ''}</span>`)
-                .replace(/\\{\\{name\\}\\}/gi, `<span style="background:linear-gradient(135deg,var(--accent),#5e5ce6);color:white;padding:2px 8px;border-radius:6px">${firstValid.firstname || 'Client'}</span>`)
-                : messageTemplate;
-            document.getElementById('dashboard-preview').innerHTML = preview;
             
             // Disable send if no valid contacts
             document.getElementById('btn-send').disabled = validatedContacts.length === 0;
@@ -1549,8 +1683,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 const contact = validatedContacts[i];
                 const phone = contact.phone;
                 const message = messageTemplate
-                    .replace(/\\{\\{prenom\\}\\}/gi, contact.firstname || '')
-                    .replace(/\\{\\{nom\\}\\}/gi, contact.lastname || '')
+                    .replace(/\\{\\{prenom\\}\\}|\\{\\{firstname\\}\\}/gi, contact.firstname || '')
+                    .replace(/\\{\\{nom\\}\\}|\\{\\{lastname\\}\\}/gi, contact.lastname || '')
                     .replace(/\\{\\{name\\}\\}/gi, contact.firstname || '');
                 
                 const result = await api('send_sms', { phone, message });
@@ -2446,6 +2580,24 @@ class Api:
         """Resize the window (calls resize_and_center)."""
         self.resize_and_center(width, height)
     
+    def set_resizable(self, resizable):
+        """Enable or disable window resizing."""
+        global _window
+        try:
+            if _window:
+                _window.resizable = resizable
+        except Exception as e:
+            pass
+    
+    def set_min_size(self, width, height):
+        """Set minimum window size."""
+        global _window
+        try:
+            if _window:
+                _window.min_size = (width, height)
+        except Exception as e:
+            pass
+    
     def center(self):
         """Center the window on screen (no-op since resize_and_center does it)."""
         pass  # Already centered by resize_and_center
@@ -2501,12 +2653,13 @@ def main():
     
     api = Api()
     
-    # Create native window (non-resizable, starts at loading size)
+    # Create native window (always resizable for step 2 flexibility)
     _window = webview.create_window(
         'Campagne SMS',
         url,
         width=500,
-        height=400,
+        height=500,
+        min_size=(450, 400),
         resizable=False,
         js_api=api
     )
