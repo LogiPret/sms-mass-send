@@ -31,7 +31,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.18"
+VERSION = "2.4.19"
 BUILD = 1
 
 # ============================================================================
@@ -1041,6 +1041,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         function setLang(lang) {
             currentLang = lang;
+            // Save language preference to localStorage
+            try { localStorage.setItem('sms_campaign_lang', lang); } catch(e) {}
+            
             document.getElementById('lang-fr').classList.toggle('active', lang === 'fr');
             document.getElementById('lang-en').classList.toggle('active', lang === 'en');
             
@@ -1176,6 +1179,14 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
         
         // ===== INIT =====
         async function init() {
+            // Restore saved language preference
+            try {
+                const savedLang = localStorage.getItem('sms_campaign_lang');
+                if (savedLang === 'en' || savedLang === 'fr') {
+                    setLang(savedLang);
+                }
+            } catch(e) {}
+            
             showScreen('screen-loading');
             checkForUpdate();
             const result = await api('check_auth');
