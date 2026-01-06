@@ -13,6 +13,65 @@ MAC_APP_DIR = Path(__file__).parent
 DIST_DIR = MAC_APP_DIR / "dist"
 
 
+def sign_app(app_path):
+    """
+    Ad-hoc sign the app to prevent 'damaged' error when downloaded.
+    
+    When apps are downloaded from the internet, macOS quarantines them.
+    If they're not properly signed, Gatekeeper shows "damaged" error.
+    Ad-hoc signing (-) creates a valid signature without a developer certificate.
+    """
+    app_path = Path(app_path)
+    
+    # Remove any existing quarantine attribute
+    subprocess.run(["xattr", "-cr", str(app_path)], capture_output=True)
+    
+    # Sign all nested frameworks/dylibs first (deep signing)
+    # The --deep flag is deprecated, so we sign components manually
+    
+    # Find and sign all .so, .dylib files and nested apps/frameworks
+    for pattern in ["**/*.so", "**/*.dylib", "**/Frameworks/*"]:
+        for item in app_path.glob(pattern):
+            subprocess.run([
+                "codesign", "--force", "--sign", "-",
+                "--timestamp=none",
+                str(item)
+            ], capture_output=True)
+    
+    # Sign the main executable
+    main_exec = app_path / "Contents" / "MacOS"
+    if main_exec.exists():
+        for exe in main_exec.iterdir():
+            subprocess.run([
+                "codesign", "--force", "--sign", "-",
+                "--timestamp=none",
+                str(exe)
+            ], capture_output=True)
+    
+    # Sign the entire app bundle
+    result = subprocess.run([
+        "codesign", "--force", "--sign", "-",
+        "--timestamp=none",
+        "--deep",  # Still useful as fallback
+        str(app_path)
+    ], capture_output=True, text=True)
+    
+    if result.returncode == 0:
+        print(f"✅ App signed: {app_path.name}")
+    else:
+        print(f"⚠️ Signing warning: {result.stderr}")
+    
+    # Verify the signature
+    verify = subprocess.run([
+        "codesign", "--verify", "--verbose=2", str(app_path)
+    ], capture_output=True, text=True)
+    
+    if verify.returncode == 0:
+        print("✅ Signature verified")
+    else:
+        print(f"⚠️ Verification: {verify.stderr}")
+
+
 def create_background_image(output_path, width=600, height=400):
     """Create a background image for the DMG using ImageMagick."""
     
@@ -84,6 +143,10 @@ def create_styled_dmg(app_path, output_dmg, volume_name="SMS Campaign"):
     # Copy app with proper name - use quotes in AppleScript
     staged_app = temp_dir / "SMS Campaign.app"
     subprocess.run(["cp", "-R", str(app_path), str(staged_app)], check=True)
+    
+    # Ad-hoc sign the app to prevent "damaged" error on download
+    print("Signing app for distribution...")
+    sign_app(staged_app)
     
     # Create background image
     create_background_image(bg_path, width=600, height=400)

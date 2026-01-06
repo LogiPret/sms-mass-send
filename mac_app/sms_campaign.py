@@ -31,7 +31,7 @@ SSL_CONTEXT.verify_mode = ssl.CERT_NONE
 # VERSION & CONFIG
 # ============================================================================
 
-VERSION = "2.4.17"
+VERSION = "2.4.18"
 BUILD = 1
 
 # ============================================================================
@@ -65,7 +65,7 @@ CONFIG = {
     "name_columns_partial": ["name", "client", "customer", "contact"],
     "name_columns_negative": ["first", "last", "prenom", "famille", "family", "_id", "id_", "number", "phone", "file"],  # Don't match client_id, name_id, filename, etc.
     "phone_separators": ["|", ";", ",", "/", " "],
-    "message_delay": 0.2
+    "message_delay": 0.5
 }
 
 # Common Québécois/French compound first name prefixes
@@ -769,9 +769,9 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <thead>
                                 <tr>
                                     <th style="width: 40px;">#</th>
-                                    <th style="width: 30%;">Prénom</th>
-                                    <th style="width: 30%;">Nom</th>
-                                    <th style="width: 35%;">Téléphone</th>
+                                    <th style="width: 30%;" data-i18n="col_firstname">Prénom</th>
+                                    <th style="width: 30%;" data-i18n="col_lastname">Nom</th>
+                                    <th style="width: 35%;" data-i18n="col_phone">Téléphone</th>
                                 </tr>
                             </thead>
                             <tbody id="valid-contacts-body"></tbody>
@@ -787,8 +787,8 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                             <thead>
                                 <tr>
                                     <th style="width: 40px;">#</th>
-                                    <th style="width: 50%;">Raison</th>
-                                    <th style="width: 40%;">Info</th>
+                                    <th style="width: 50%;" data-i18n="col_reason">Raison</th>
+                                    <th style="width: 40%;" data-i18n="col_info">Info</th>
                                 </tr>
                             </thead>
                             <tbody id="skipped-contacts-body"></tbody>
@@ -904,6 +904,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 col_phone: "Téléphone",
                 col_source: "Source",
                 col_reason: "Raison",
+                col_info: "Info",
                 col_raw_firstname: "Prénom brut",
                 col_raw_phone: "Tél brut",
                 next_step: "Continuer →",
@@ -976,6 +977,7 @@ HTML_TEMPLATE = '''<!DOCTYPE html>
                 col_phone: "Phone",
                 col_source: "Source",
                 col_reason: "Reason",
+                col_info: "Info",
                 col_raw_firstname: "Raw First Name",
                 col_raw_phone: "Raw Phone",
                 next_step: "Continue →",
